@@ -163,6 +163,8 @@
       if (await save({ launch: { custom } })) { ui.lnewName = ''; ui.lnewTarget = ''; render(true); }
     },
     'apt': async () => { const r = await ej.launch('apt'); if (r && !r.ok) E.toast(r.error); },
+    'update-install': async () => { const r = await ej.updateInstall(); if (r && !r.ok) E.toast(r.error); },
+    'update-check': async () => { await ej.updateCheck(); E.toast('Checking for updates…'); setTimeout(() => render(true), 3000); },
     'brk-toggle': () => save({ breaks: { enabled: !state.cfg.breaks.enabled } }),
     'brk-campaign': () => save({ breaks: { campaign: !state.cfg.breaks.campaign } }),
     'brk-taken': async () => { await ej.breakTaken(); E.toast(`Break noted. The next "Take a break?" comes after ${state.cfg.breaks.everyMin} minutes of play.`); },

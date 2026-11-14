@@ -6,7 +6,11 @@
     const corrupt = snap.stateCorrupt ? `<div class="banner warn" role="alert"><span class="bi">${ic.warn()}</span><div class="grow"><div class="bt">Saved stats couldn't be read</div>
       <div class="sub" style="white-space:normal">The file was kept as ${E.esc(snap.stateCorrupt)} and Exilogue started fresh from Client.txt. Older backups are in Settings › League.</div></div>
       <button class="btn" data-nav="settings:league">Open backups</button></div>` : '';
-    return corrupt + bannersMain({ snap, cfg });
+    const u = snap.update;
+    const upd = u && u.state === 'ready' ? `<div class="banner live" role="status"><span class="bi">${ic.refresh()}</span>
+      <div class="grow"><div class="bt">Exilogue ${E.esc(u.next || '')} is ready</div><div class="sub">It installs by itself when you close Exilogue${snap.gameRunning ? '. Restarting is possible once the game is closed.' : ', or restart now.'}</div></div>
+      ${snap.gameRunning ? '' : '<button class="btn p" data-act="update-install">Restart and update</button>'}</div>` : '';
+    return corrupt + upd + bannersMain({ snap, cfg });
   }
   function bannersMain({ snap, cfg }) {
     if (!cfg.ui.welcomeDone && !snap.paths.clientTxt) {

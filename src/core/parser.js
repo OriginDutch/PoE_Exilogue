@@ -11,7 +11,8 @@ const RX = {
   entered: /^: You have entered (.+)\.$/,
   levelUp: /^: (.+?) \((\w+)\) is now level (\d+)$/,
   slain: /^: (.+?) has been slain\.$/,
-  // /played and /deaths output. Wording still to be verified against a real 3.30 log.
+  // /played and /deaths output, verified against a real 3.30 log (2026-11-14):
+  // ": You have played for 8 hours, 7 minutes, and 29 seconds." / ": You have died 13 times."
   played: /^: You have played (?:for )?(.+)\.$/,
   deaths: /^: You have died (\d+) times?\.$/,
   logOpen: /\*{5} LOG FILE OPENING \*{5}/,

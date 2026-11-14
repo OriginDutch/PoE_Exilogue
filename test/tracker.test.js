@@ -303,3 +303,12 @@ test('sessions: breaks are counted and the summary lands in lastSession and the 
   assert.ok(tr.events().some(e => e.type === 'sessEnd' && e.summary && e.summary.breaks === 2));
   assert.equal(tr.events().filter(e => e.type === 'break').length, 2);
 });
+
+test('real 3.30 /played and /deaths lines', () => {
+  const a = parseLine('2026/11/14 20:23:48 2973984 cffb06be [INFO Client 9384] : You have played for 8 hours, 7 minutes, and 29 seconds.');
+  assert.equal(a.type, 'played');
+  assert.equal(a.seconds, 8 * 3600 + 7 * 60 + 29);
+  const b = parseLine('2026/11/14 20:23:49 2975281 cffb06be [INFO Client 9384] : You have died 13 times.');
+  assert.equal(b.type, 'deathsCount');
+  assert.equal(b.count, 13);
+});

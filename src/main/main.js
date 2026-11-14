@@ -297,6 +297,8 @@ function startTracking() {
 function setGameRunning(running) {
   if (running === gameRunning) return;
   gameRunning = running;
+  // A downloaded update installs when Exilogue closes, but never while the game runs.
+  if (autoUpdater) autoUpdater.autoInstallOnAppQuit = !running;
   if (caughtUp && tracker) tracker.setPaused(!running, Date.now());
   updateOverlayVisibility();
 }
@@ -362,6 +364,7 @@ function snapshot() {
     pobBuild,
     today: todayStats(),
     mostRun: mostRunLeague(),
+    update: updateState,
   };
 }
 
@@ -371,7 +374,7 @@ const sentKey = new Map(); // webContents id -> data key last sent
 const hiddenWc = new Set(); // windows whose page reports it can't be seen (covered by the game, etc.)
 let lastIdleTick = 0;
 function statusKey() {
-  return JSON.stringify([gen, breakPrompt && breakPrompt.shownAt, ninja.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [wealth.rev, wealth.lastError, wealthSyncAt, weBgSyncAt, Math.floor(weScriptSeenAt / 300000)] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, overlayUnlocked,
+  return JSON.stringify([gen, updateState, breakPrompt && breakPrompt.shownAt, ninja.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [wealth.rev, wealth.lastError, wealthSyncAt, weBgSyncAt, Math.floor(weScriptSeenAt / 300000)] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, overlayUnlocked,
     profileStatus, neversinkLatest, config.data.neversink, pathsCache, leagueDb && leagueDb.corruptFile]);
 }
 function broadcast() {
@@ -652,6 +655,40 @@ function mostRunLeague() {
   return best;
 }
 
+// ---------- auto-update (installed version only) ----------
+// GitHub Releases of the repo; downloads in the background, installs when Exilogue closes,
+// or right away from the "Restart" button — which is never offered while the game runs.
+let updateState = { state: 'off', version: app.getVersion() }; // off | checking | none | downloading | ready | error
+let autoUpdater = null;
+function startUpdater() {
+  // A zip copy (no app-update.yml) can't update itself: only the installed app checks.
+  if (!app.isPackaged || !fs.existsSync(path.join(process.resourcesPath, 'app-update.yml'))) return;
+  try { ({ autoUpdater } = require('electron-updater')); } catch { return; }
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = !gameRunning;
+  autoUpdater.logger = null;
+  const set = s => { updateState = { ...updateState, ...s, at: Date.now() }; };
+  autoUpdater.on('checking-for-update', () => set({ state: 'checking' }));
+  autoUpdater.on('update-not-available', () => set({ state: 'none' }));
+  autoUpdater.on('update-available', i => set({ state: 'downloading', next: i && i.version, pct: 0 }));
+  autoUpdater.on('download-progress', p => { const pct = Math.round(p.percent || 0); if (pct - (updateState.pct || 0) >= 10) set({ pct }); });
+  autoUpdater.on('update-downloaded', i => set({ state: 'ready', next: i && i.version }));
+  autoUpdater.on('error', e => set({ state: 'error', error: String((e && e.message) || e).split('\n')[0].slice(0, 160) }));
+  const check = () => { if (updateState.state !== 'ready' && updateState.state !== 'downloading') autoUpdater.checkForUpdates().catch(() => {}); };
+  setTimeout(check, 15 * 1000);
+  setInterval(check, 4 * 60 * 60 * 1000);
+  updateCheckNow = check;
+}
+let updateCheckNow = null;
+// Closing Exilogue with an update ready: look for the game once more first (the regular check can be a minute old).
+let quitChecked = false;
+app.on('before-quit', e => {
+  if (quitChecked || !autoUpdater || updateState.state !== 'ready' || process.platform !== 'win32') return;
+  e.preventDefault();
+  quitChecked = true;
+  checkGameProcess().catch(() => {}).finally(() => { autoUpdater.autoInstallOnAppQuit = !gameRunning; app.quit(); });
+});
+
 // ---------- Awakened PoE Trade: running?, started by us when, its price-check key ----------
 let aptRunning = false, aptLaunchedAt = 0, aptKey = null, aptKeyReadAt = 0;
 async function checkApt() {
@@ -930,6 +967,16 @@ function setupIpc() {
   ipcMain.on('win:visible', (e, visible) => { if (visible) hiddenWc.delete(e.sender.id); else hiddenWc.add(e.sender.id); });
   ipcMain.handle('storage:get', () => storageInfo());
   ipcMain.handle('break:taken', () => { takeBreak(); return true; });
+  ipcMain.handle('update:install', async () => {
+    if (!autoUpdater || updateState.state !== 'ready') return { ok: false, error: 'No update ready' };
+    await checkGameProcess(); // the regular check can be a minute old
+    if (gameRunning) return { ok: false, error: 'Close the game first; it installs by itself when Exilogue closes.' };
+    flushLeague({ force: true });
+    quitChecked = true; // just checked: the before-quit check must not hold this quit up
+    setImmediate(() => autoUpdater.quitAndInstall(true, true)); // silent install, then start Exilogue again
+    return { ok: true };
+  });
+  ipcMain.handle('update:check', () => { if (updateCheckNow) updateCheckNow(); return updateState; });
   ipcMain.handle('icons:get', () => (icons ? icons.all() : {}));
   ipcMain.handle('events:get', (_e, q) => {
     if (!tracker || !leagueDb) return { rows: [], total: 0, any: 0 };
@@ -1057,6 +1104,7 @@ app.whenReady().then(() => {
   });
   setInterval(broadcast, 1000);
   setInterval(breakTick, 2000);
+  startUpdater();
   // Is Awakened PoE Trade running? Once a minute, only while the dashboard can be seen (one tasklist call).
   setInterval(() => { if (dashWin && dashWin.isVisible() && !dashWin.isMinimized()) checkApt().catch(() => {}); }, 60 * 1000);
   setTimeout(() => checkApt().catch(() => {}), 4000);

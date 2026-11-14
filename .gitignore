@@ -4,3 +4,4 @@ build/
 mockups/
 *.log
 tools/demo-icons.json
+release/

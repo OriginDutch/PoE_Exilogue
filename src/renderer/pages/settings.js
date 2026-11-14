@@ -6,10 +6,22 @@
   const mock = pal => `<div class="mock t-${pal}" aria-hidden="true"><div class="ms"><i class="a"></i><i></i><i></i><i></i></div><div class="mc"><div class="k poe"><div class="ln" style="width:60%"></div><div class="ln m"></div><div class="bt"></div></div><div class="k"><div class="dot"></div><div class="ln m"></div><div class="ln" style="width:50%"></div></div></div></div>`;
   const opt = (name, value, label, checked) => `<label class="opt"><input type="radio" name="${name}" value="${value}" data-pal="${name}" ${checked ? 'checked' : ''}>${mock(value)}<div class="nm">${label}<span class="on">${ic.check(12)}</span></div></label>`;
 
-  function appearance(cfg) {
+  function updatesRow(snap) {
+    const u = snap.update || { state: 'off' };
+    const st = { off: 'This copy doesn\'t update itself (installed versions do). Install Exilogue with the setup file to get updates.',
+      checking: 'Checking for updates…', none: 'Up to date.' + (u.at ? ' Checked ' + E.ago(u.at) + '.' : ''),
+      downloading: `Downloading version ${E.esc(u.next || '')}${u.pct ? ' · ' + u.pct + '%' : ''}…`,
+      ready: `Version ${E.esc(u.next || '')} is ready. It installs when you close Exilogue.`,
+      error: `Couldn't check for updates: ${E.esc(u.error || 'unknown error')}` }[u.state] || '';
+    return `<section class="setrow"><div><h2>Updates</h2><p>Exilogue ${E.esc(u.version || '')}. New versions come from GitHub, download in the background and install when you close Exilogue, never while the game runs.</p></div>
+      <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-start"><span class="${u.state === 'error' ? 'st no' : 'muted'}" style="white-space:normal">${st}</span>
+        <div class="row" style="gap:8px">${u.state === 'ready' ? `<button class="btn p" data-act="update-install" ${snap.gameRunning ? 'disabled' : ''}>Restart and update</button>${snap.gameRunning ? '<span class="sub">after you close the game</span>' : ''}` : u.state !== 'off' ? '<button class="btn" data-act="update-check">Check now</button>' : ''}</div></div></section>`;
+  }
+
+  function appearance(cfg, snap) {
     const u = cfg.ui;
     const fonts = [['source', 'Source Sans 3', "'Source Sans 3', sans-serif"], ['bahnschrift', 'Bahnschrift', "Bahnschrift, Barlow, sans-serif"], ['inter', 'Inter', 'Inter, sans-serif'], ['segoe', 'Segoe UI', "'Segoe UI Variable', 'Segoe UI', sans-serif"]];
-    return `<section class="setrow"><div><h2>Theme</h2><p>System follows Windows. Right now Windows is set to ${cfg.systemDark ? 'dark' : 'light'}.</p></div>
+    return (snap ? updatesRow(snap) : '') + `<section class="setrow"><div><h2>Theme</h2><p>System follows Windows. Right now Windows is set to ${cfg.systemDark ? 'dark' : 'light'}.</p></div>
         <div role="radiogroup" aria-label="Theme" class="seg" style="align-self:start">${[['system', 'System'], ['dark', 'Dark'], ['light', 'Light']].map(([v, l]) => `<label><input type="radio" name="mode" value="${v}" data-theme ${u.theme === v ? 'checked' : ''}>${l}</label>`).join('')}</div></section>
       <section class="setrow"><div><h2>Dark palette</h2><p>Used in dark mode, and in System mode when Windows is dark.</p></div>
         <div class="opts" role="radiogroup" aria-label="Dark palette">${opt('darkPalette', 'night', 'Umbra Night', u.darkPalette === 'night')}${opt('darkPalette', 'spectral', 'Spectral Teal', u.darkPalette === 'spectral')}${opt('darkPalette', 'silver', 'Silver &amp; Ink', u.darkPalette === 'silver')}</div></section>
@@ -151,7 +163,7 @@
     live: false,
     render({ cfg, snap, ui }) {
       const tab = ui.settingsTab || 'appearance';
-      const body = tab === 'appearance' ? appearance(cfg) : tab === 'paths' ? paths(cfg, snap) : tab === 'league' ? league(cfg, ui, snap)
+      const body = tab === 'appearance' ? appearance(cfg, snap) : tab === 'paths' ? paths(cfg, snap) : tab === 'league' ? league(cfg, ui, snap)
         : tab === 'storage' ? storage(ui) : tab === 'launch' ? launch(cfg, snap, ui)
         : tab === 'overlay' ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:20px">${EX.overlayControls(cfg, snap)}</div>` : hotkeys(cfg, snap, ui);
       return `<div style="max-width:1000px"><div class="head" style="margin-bottom:16px"><h1 class="h">Settings</h1></div>

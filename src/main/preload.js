@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('ej', {
   listBackups: () => ipcRenderer.invoke('backups:list'),
   storage: () => ipcRenderer.invoke('storage:get'),
   breakTaken: () => ipcRenderer.invoke('break:taken'),
+  updateInstall: () => ipcRenderer.invoke('update:install'),
+  updateCheck: () => ipcRenderer.invoke('update:check'),
   icons: () => ipcRenderer.invoke('icons:get'),
   setVisible: v => ipcRenderer.send('win:visible', v),
   restoreBackup: file => ipcRenderer.invoke('backups:restore', file),
