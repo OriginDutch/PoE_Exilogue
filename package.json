@@ -1,0 +1,27 @@
+{
+  "name": "exilogue",
+  "version": "0.5.0",
+  "description": "Path of Exile league compendium",
+  "main": "src/main/main.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/tracker.test.js test/db.test.js test/logwatcher.test.js test/icons.test.js test/wealth.test.js test/ninja.test.js test/wesync.test.js test/pob.test.js",
+    "mockups": "python3 tools/screenshots.py",
+    "package": "electron-packager . Exilogue --platform=win32 --arch=x64 --out=dist --overwrite --ignore=^/mockups --ignore=^/tools --ignore=^/test --ignore=^/dist --ignore=^/build"
+  },
+  "author": "Marcel",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^45.3.1"
+  },
+  "dependencies": {
+    "@fontsource/cinzel": "^5.3.0",
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/source-sans-3": "^5.3.1"
+  },
+  "productName": "Exilogue"
+}

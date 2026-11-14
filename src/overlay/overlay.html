@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'">
+  <title>Exilogue overlay</title>
+  <link rel="stylesheet" href="../../node_modules/@fontsource/source-sans-3/500.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/source-sans-3/600.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/inter/500.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/inter/600.css">
+  <link rel="stylesheet" href="../renderer/ui-kit.css">
+  <style>
+    html, body { margin: 0; background: transparent; overflow: hidden; user-select: none; }
+    body { padding: 14px; box-sizing: border-box; display: flex; align-items: stretch; gap: 10px; }
+    body.brk-left { flex-direction: row-reverse; }
+    /* In the real window the overlay fills the width the user set; size S/M/L only scales the type.
+       The break popup gets its own 200 px; the window grows by that (plus the gap) while it shows. */
+    .ov { position: relative; }
+    #ov { width: auto !important; flex: 1 1 auto; min-width: 0; align-self: flex-start; }
+    #brk { width: 200px !important; flex: none; display: flex; flex-direction: column; justify-content: center; }
+    #brk[hidden] { display: none; }
+    .ov.unl { -webkit-app-region: drag; }
+    .ov.unl .hdl, .ov.unl .bar button { -webkit-app-region: no-drag; }
+    .ov .hdl { cursor: ew-resize; width: 12px; height: 12px; }
+    .ov .hdl.hl { left: -12px; } .ov .hdl.hr2 { right: -12px; }
+    .ov .hdl.ht { top: -12px; } .ov .hdl.hb { bottom: -12px; }
+  </style>
+</head>
+<body>
+  <div id="ov" class="app ov ovt-night sz-m"></div>
+  <div id="brk" class="app ov ovbrk ovt-night sz-m" hidden></div>
+  <script src="../renderer/util.js"></script>
+  <script src="../renderer/pages/tools.js"></script>
+  <script src="overlay.js"></script>
+</body>
+</html>

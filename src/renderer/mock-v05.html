@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../node_modules/@fontsource/source-sans-3/400.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/source-sans-3/600.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/source-sans-3/700.css">
+<link rel="stylesheet" href="ui-kit.css">
+<style>
+  body{margin:0;background:#05070b}
+  .shot{padding:28px;display:flex;flex-direction:column;gap:14px;width:fit-content}
+  .shot h3{margin:0;font:600 13px/1 'Source Sans 3';letter-spacing:.08em;text-transform:uppercase;color:#8191a9}
+  .game{position:relative;width:640px;height:240px;border-radius:8px;overflow:hidden;
+    background:radial-gradient(60% 80% at 30% 60%,#3a3020,transparent),radial-gradient(50% 60% at 80% 30%,#1e2a33,transparent),linear-gradient(160deg,#1b1a16,#0d0c0a)}
+  .game .tag{position:absolute;right:10px;bottom:8px;font:12px 'Source Sans 3';color:#ffffff55}
+  /* compact overlay */
+  .ov2{position:absolute;left:18px;top:18px;width:232px;border-radius:8px;background:color-mix(in srgb,var(--bg) 80%,transparent);border:1px solid color-mix(in srgb,var(--tx) 16%,transparent);box-shadow:0 8px 24px rgba(0,0,0,.55);color:var(--tx);font-variant-numeric:tabular-nums;line-height:1.2;font-family:var(--ui)}
+  .ov2 .main{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px;padding:9px 12px 8px}
+  .ov2 .k{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tx2)}
+  .ov2 .k b{display:block;margin-top:2px;font-size:14px;letter-spacing:0;text-transform:none;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ov2 .v{font-size:22px;font-weight:700;text-align:right;white-space:nowrap}
+  .ov2 .v small{display:block;font-size:12px;font-weight:600;margin-top:2px;color:var(--tx2)}
+  .ov2 .ahead{color:var(--ok)!important}.ov2 .behind{color:var(--bad)!important}
+  .ov2 .foot{display:flex;justify-content:space-between;padding:5px 12px 6px;border-top:1px solid color-mix(in srgb,var(--tx) 8%,transparent);font-size:12px;color:var(--tx2)}
+  .ov2 .foot b{color:var(--tx);font-weight:600}
+  .ov2 .dim{color:var(--tx3)!important}
+  .brk{position:absolute;left:258px;top:18px;width:206px;border-radius:8px;padding:10px 12px;background:color-mix(in srgb,var(--bg) 84%,transparent);border:1px solid color-mix(in srgb,var(--live) 45%,transparent);box-shadow:0 8px 24px rgba(0,0,0,.55);color:var(--tx);font-family:var(--ui)}
+  .brk b{font-size:15px}.brk p{margin:3px 0 8px;font-size:12px;color:var(--tx2);line-height:1.35}
+  .brk .k{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 5px;border-radius:4px;border:1px solid var(--line2);font:600 11px var(--ui);color:var(--tx)}
+  .brk .bar{height:3px;border-radius:2px;background:var(--line);overflow:hidden;margin-top:9px}.brk .bar i{display:block;height:100%;width:62%;background:var(--live)}
+  .w{width:300px}
+  .prog{height:8px;border-radius:5px;background:var(--card2);overflow:hidden}.prog i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),var(--live))}
+  .kv{display:grid;grid-template-columns:repeat(5,auto);gap:4px 26px}
+  .kv span{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);font-weight:600}
+  .kv b{font-size:20px}
+.brk2{position:absolute;left:258px;top:18px;width:200px;border-radius:8px;background:color-mix(in srgb,var(--bg) 80%,transparent);border:1px solid color-mix(in srgb,var(--live) 45%,transparent);box-shadow:0 8px 24px rgba(0,0,0,.55);color:var(--tx);font-family:var(--ui);font-variant-numeric:tabular-nums;line-height:1.2}
+.brk2 .main{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px;padding:9px 12px 8px}
+.brk2 .k{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}.brk2 .k b{display:block;margin-top:2px;font-size:14px;letter-spacing:0;text-transform:none;color:var(--tx)}
+.brk2 .v{font-size:22px;font-weight:700;text-align:right}.brk2 .v small{display:block;font-size:12px;color:var(--tx2);font-weight:600;margin-top:2px}
+</style></head>
+<body class="app t-night"><div id="all">
+
+<div class="shot" id="ov-campaign"><h3>Overlay · in de campaign</h3>
+  <div class="game"><div class="ov2">
+    <div class="main"><div class="k">Campaign<b>Act 4 · The Aqueduct</b></div><div class="v">2:41:07<small class="ahead">Act 3 −3:12</small></div></div>
+    <div class="foot"><span>Session <b>2:58:40</b></span><span>Breaks <b>0:12</b></span></div>
+  </div><span class="tag">game</span></div>
+</div>
+
+<div class="shot" id="ov-map"><h3>Overlay · in een map</h3>
+  <div class="game"><div class="ov2">
+    <div class="main"><div class="k">Map · T14<b>Crimson Temple</b></div><div class="v">3:12<small>avg 5:43</small></div></div>
+    <div class="foot"><span>Session <b>3:31:05</b></span><span style="color:var(--ok)"><b style="color:var(--ok)">0.41</b> div/h</span></div>
+  </div><span class="tag">game</span></div>
+</div>
+
+<div class="shot" id="ov-town"><h3>Overlay · in hideout / town (campaign: "In Town", timer loopt door)</h3>
+  <div class="game"><div class="ov2">
+    <div class="main"><div class="k">In Hideout<b class="dim">Last map · Crimson Temple</b></div><div class="v dim">5:28<small>map done</small></div></div>
+    <div class="foot"><span>Session <b>3:36:51</b></span><span>Breaks <b>0:24</b></span></div>
+  </div><span class="tag">game</span></div>
+</div>
+
+<div class="shot" id="ov-break"><h3>Take a break? · zelfde hoogte als de timer, ~10 s na je map</h3>
+  <div class="game"><div class="ov2">
+    <div class="main"><div class="k">In Hideout<b class="dim">Last map · Crimson Temple</b></div><div class="v dim">5:28<small>map done</small></div></div>
+    <div class="foot"><span>Session <b>4:02:13</b></span><span>Breaks <b>0:24</b></span></div>
+  </div>
+  <div class="brk2"><div class="main"><div class="k" style="color:var(--live)">Take a break?<b>Num 0 = yes</b></div><div class="v">1:04<small>since last</small></div></div></div>
+  <span class="tag">game</span></div>
+</div>
+
+<div class="shot" id="home"><h3>Home · "Previous session" + Wealthy Exile met div/u en doel</h3>
+  <div style="display:flex;flex-direction:column;gap:14px;width:900px">
+    <section class="box" style="padding:16px 20px">
+      <div class="row between"><div><div class="sub" style="text-transform:uppercase;letter-spacing:.08em;font-weight:600;font-size:11px">Previous session · yesterday 20:02 – 03:47</div>
+        <div style="font-size:20px;font-weight:700;margin-top:4px">Campaign done in 7:12:40, 1 divine on your first map 🔥</div></div>
+        <button class="btn sm">Dismiss</button></div>
+      <div class="kv"><span>Played</span><span>Maps</span><span>Avg map</span><span>Deaths</span><span>Wealth</span>
+        <b>7:45</b><b>6</b><b>5:51</b><b>9</b><b style="color:var(--ok)">+3.2 div</b></div>
+      <div class="sub">Breaks: 3 · 0:31 in total · full summary in Events</div>
+    </section>
+    <div style="display:flex;gap:14px">
+      <section class="card s-l" style="width:560px;height:250px">
+        <div class="ch"><span class="logo" aria-hidden="true">WE</span><div class="t"><b>Wealthy Exile</b></div></div>
+        <div style="display:grid;grid-template-columns:1fr 1.15fr;gap:22px">
+          <div><div style="font-size:30px;font-weight:700;line-height:1.1">64.2 div</div><div class="sub">58,310 chaos · 908c per div</div>
+            <div style="margin-top:8px"><span style="font-weight:600;color:var(--ok)">+3.2 div</span><span class="sub"> since previous</span></div>
+            <div style="margin-top:4px"><span style="font-weight:600">0.41 div/h</span><span class="sub"> this session</span></div></div>
+          <div style="display:flex;flex-direction:column;gap:7px"><div class="row between"><span class="sub">Goal · Mageblood</span><span class="sub">poe.ninja 149 div</span></div>
+            <div class="prog"><i style="width:43%"></i></div>
+            <div class="row between"><b>43%</b><span class="sub">84.8 div to go · ~207 h at this rate</span></div></div>
+        </div>
+        <div class="row between push"><span class="sub">Exported 12 min ago · click to sync</span><button class="btn sm">Open Wealthy Exile</button></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div class="shot" id="maps-a"><h3>Map-stats · optie A: eigen pagina "Maps"</h3>
+  <section class="box" style="width:860px"><div class="bh"><h2>Per map</h2><span class="sub">This league · sorted by runs</span></div>
+    <table class="tbl"><thead><tr><th>Map</th><th>Tier</th><th style="text-align:right">Runs</th><th style="text-align:right">Avg time</th><th style="text-align:right">Fastest</th><th style="text-align:right">Deaths</th></tr></thead><tbody>
+      <tr><td>Crimson Temple</td><td>T14</td><td class="r">14</td><td class="r">5:43</td><td class="r">3:58</td><td class="r">2</td></tr>
+      <tr><td>Strand</td><td>T12–14</td><td class="r">11</td><td class="r">4:12</td><td class="r">3:05</td><td class="r">0</td></tr>
+      <tr><td>Toxic Sewer</td><td>T13</td><td class="r">6</td><td class="r" style="color:var(--bad)">8:51</td><td class="r">6:40</td><td class="r" style="color:var(--bad)">5</td></tr>
+      <tr><td>Dunes</td><td>T11</td><td class="r">5</td><td class="r">4:30</td><td class="r">3:41</td><td class="r">1</td></tr>
+    </tbody></table></section>
+</div>
+
+<div class="shot" id="maps-b"><h3>Map-stats · optie B: blok op de bestaande Session &amp; Maps-pagina</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;width:860px">
+    <section class="box"><div class="bh"><h2>Recent maps</h2><span class="sub">(bestaand)</span></div><div class="sub">Crimson Temple · 5:28 · 0 deaths<br>Strand · 3:58 · 0 deaths<br>Toxic Sewer · 9:40 · 2 deaths</div></section>
+    <section class="box"><div class="bh"><h2>Best and worst maps</h2><span class="sub">min. 3 runs</span></div>
+      <div class="row between"><span>Strand</span><span class="sub">avg 4:12 · 0 deaths</span></div>
+      <div class="row between"><span>Dunes</span><span class="sub">avg 4:30 · 1 death</span></div>
+      <div class="hr"></div>
+      <div class="row between"><span style="color:var(--bad)">Toxic Sewer</span><span class="sub">avg 8:51 · 5 deaths</span></div>
+      <button class="btn sm" style="align-self:flex-start">All maps</button></section>
+  </div>
+</div>
+
+</div></body></html>

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'">
+  <title>Exilogue</title>
+  <link rel="stylesheet" href="../../node_modules/@fontsource/cinzel/500.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/cinzel/600.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/source-sans-3/400.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/source-sans-3/500.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/source-sans-3/600.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/source-sans-3/700.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/inter/400.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/inter/500.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/inter/600.css">
+  <link rel="stylesheet" href="ui-kit.css">
+  <style>html,body{margin:0;height:100%;overflow:hidden}</style>
+</head>
+<body>
+  <div id="app" class="app win t-night f-source">
+    <header class="titlebar">
+      <span>Exilogue</span>
+      <div class="wctl">
+        <button data-win="min" aria-label="Minimize"></button>
+        <button data-win="max" aria-label="Maximize"></button>
+        <button data-win="close" class="x" aria-label="Close"></button>
+      </div>
+    </header>
+    <div class="wbody">
+      <nav class="side" id="side" aria-label="Tools"></nav>
+      <main class="main" id="main"></main>
+    </div>
+  </div>
+  <script src="util.js"></script>
+  <script src="cards.js"></script>
+  <script src="pages/home.js"></script>
+  <script src="pages/tools.js"></script>
+  <script src="pages/events.js"></script>
+  <script src="pages/settings.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

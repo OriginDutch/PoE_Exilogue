@@ -1,0 +1,355 @@
+'use strict';
+(async function () {
+  const E = EX, ic = EX.icon;
+  const appEl = document.getElementById('app');
+  const side = document.getElementById('side');
+  const main = document.getElementById('main');
+
+  const ui = { view: 'home', editing: false, settingsTab: 'appearance', recording: null };
+  const state = EX.state = { cfg: await ej.getConfig(), snap: await ej.snapshot(), darkPalette: 'night' };
+  state.icons = await ej.icons(); state.iconsRev = state.snap.iconsRev;
+  let viewEl = null, currentKey = null;
+
+  const ctx = () => ({ cfg: state.cfg, snap: state.snap, st: state.snap && state.snap.stats, ui, save });
+
+  async function save(patch) {
+    const c = await ej.setConfig(patch);
+    if (c._error) { await E.toast(c._error); return false; }
+    applyConfig(c);
+    render(true);
+    return true;
+  }
+
+  // ---------- theme / font / motion ----------
+  function applyConfig(c) {
+    state.cfg = c;
+    const u = c.ui;
+    const dark = u.theme === 'dark' || (u.theme === 'system' && c.systemDark);
+    const pal = dark ? u.darkPalette : u.lightPalette;
+    state.darkPalette = u.darkPalette;
+    appEl.className = `app win t-${pal} f-${u.font}`;
+    document.documentElement.classList.toggle('no-motion', !u.motion);
+    renderSide();
+  }
+
+  // ---------- sidebar ----------
+  const TOOLS = [['poe', 'PE', 'Path of Exile'], ['maps', 'SM', 'Session &amp; Maps'], ['campaign', 'CP', 'Campaign'], ['overlay', 'OV', 'Overlay'], ['filter', 'LF', 'Loot filter'], ['pob', 'PB', 'Path of Building']];
+  const LINKS = [['wealthy', 'WE', 'Wealthy Exile', 'https://wealthyexile.com'], ['ninja', 'PN', 'poe.ninja', 'https://poe.ninja'], ['trade', 'TR', 'Trade', 'https://www.pathofexile.com/trade']];
+  const SOON = [['fate', 'FL', 'Fate Logger'], ['threads', 'TT', 'Threads Tracker']];
+
+  function renderSide() {
+    const col = state.cfg.ui.sidebarCollapsed;
+    side.classList.toggle('col', col);
+    const item = (key, icon, label, attrs = '') => {
+      const on = ui.view === key;
+      return `<button class="nav${on ? ' on' : ''}" ${attrs} ${on ? 'aria-current="page"' : ''} title="${col ? label.replace('&amp;', '&') : ''}">${icon}<span class="lb">${label}</span></button>`;
+    };
+    side.innerHTML = `<div class="brand">${ic.brand()}<span>Exilogue</span></div>
+      ${item('home', `<span class="ic">${ic.home()}</span>`, 'Home', 'data-nav="home"')}
+      ${item('events', `<span class="ic">${ic.events()}</span>`, 'Events', 'data-nav="events"')}
+      <div class="sec">Tools</div>
+      ${TOOLS.map(([id, m, l]) => item('page:' + id, `<span class="mini" aria-hidden="true">${m}</span>`, l, `data-nav="page:${id}"`)).join('')}
+      <div class="sec">Links</div>
+      ${LINKS.map(([id, m, l, u]) => item('link:' + id, `<span class="mini" aria-hidden="true">${m}</span>`, l, `data-url="${u}"`)).join('')}
+      <div class="sec">Coming soon</div>
+      ${SOON.map(([id, m, l]) => `<button class="nav soon" disabled title="${col ? l : ''}"><span class="mini" aria-hidden="true">${m}</span><span class="lb">${l}</span></button>`).join('')}
+      <div class="spacer"></div>
+      ${item('settings', `<span class="ic">${ic.settings()}</span>`, 'Settings', 'data-nav="settings"')}
+      <button class="nav" data-act="collapse" aria-expanded="${!col}" aria-label="${col ? 'Expand sidebar' : 'Collapse sidebar'}" style="color:var(--tx3)"><span class="ic">${col ? ic.expand() : ic.collapse()}</span><span class="lb">Collapse</span></button>`;
+  }
+
+  // ---------- title bar ----------
+  function renderWinCtl(maximized) {
+    const [mn, mx, cl] = appEl.querySelectorAll('[data-win]');
+    mn.innerHTML = ic.min(); cl.innerHTML = ic.close();
+    mx.innerHTML = maximized ? ic.restore() : ic.max();
+    mx.setAttribute('aria-label', maximized ? 'Restore down' : 'Maximize');
+  }
+  appEl.querySelector('.titlebar').addEventListener('click', e => {
+    const b = e.target.closest('[data-win]'); if (!b) return;
+    ej.win[b.dataset.win]();
+  });
+  appEl.querySelector('.titlebar').addEventListener('dblclick', e => { if (!e.target.closest('[data-win]')) ej.win.max(); });
+  ej.win.onState(s => renderWinCtl(s.maximized));
+  renderWinCtl((await ej.win.state()).maximized);
+
+  // ---------- routing / rendering ----------
+  function pageFor(view) {
+    if (view === 'home') return E.pages.home;
+    if (view === 'events') return E.pages.events;
+    if (view === 'settings') return E.pages.settings;
+    if (view.startsWith('page:')) return E.pages[view.slice(5)];
+    return E.pages.home;
+  }
+
+  EX.ui = ui;
+  EX.rerender = () => render(true);
+  function render(force) {
+    const page = pageFor(ui.view);
+    const key = ui.view;
+    if (key !== currentKey || !viewEl) {
+      currentKey = key;
+      viewEl = document.createElement('div');
+      viewEl.className = 'view';
+      viewEl.innerHTML = page.render(ctx());
+      main.replaceChildren(viewEl);
+      main.scrollTop = 0;
+      if (page.mount) page.mount(viewEl, ctx());
+      return;
+    }
+    if (force || page.live) E.morph(viewEl, page.render(ctx()));
+  }
+
+  // Events come from the database, already filtered, 200 at a time (newest first).
+  // mode 'reset': first page · 'more': the page before the oldest shown · 'new': whatever arrived after the newest shown.
+  // Loads run one after another, so two never start from the same old list.
+  let evQueue = Promise.resolve();
+  function loadEvents(mode = 'reset') {
+    evQueue = evQueue.then(() => loadEventsNow(mode)).catch(() => {});
+    return evQueue;
+  }
+  async function loadEventsNow(mode) {
+    const q = E.pages.events.query(state.snap.stats, ui);
+    const cur = ui.events;
+    const same = cur && cur.rows.length && cur.query === JSON.stringify(q); // filter or default character unchanged
+    ui.eventSeq = state.snap.stats && state.snap.stats.eventSeq;
+    if (mode === 'more' && same) {
+      const r = await ej.events({ ...q, before: cur.rows[cur.rows.length - 1].seq });
+      ui.events = { ...r, rows: cur.rows.concat(r.rows), query: cur.query };
+    } else if (mode === 'new' && same) {
+      const r = await ej.events({ ...q, limit: 1000, after: cur.rows[0].seq });
+      if (r.rows.length === 1000) ui.events = { ...(await ej.events(q)), query: JSON.stringify(q) }; // too many: start fresh, no holes
+      else ui.events = { ...r, rows: r.rows.concat(cur.rows), query: cur.query };
+    } else {
+      ui.events = { ...(await ej.events(q)), query: JSON.stringify(q) };
+    }
+  }
+
+  // Data a settings tab needs before it can draw.
+  async function loadTab() {
+    if (ui.settingsTab === 'league') ui.backups = await ej.listBackups();
+    if (ui.settingsTab === 'storage') ui.storage = await ej.storage();
+  }
+
+  async function go(target) {
+    if (target.startsWith('settings')) {
+      const tab = target.split(':')[1];
+      if (tab) ui.settingsTab = tab;
+      ui.view = 'settings';
+      await loadTab();
+    } else {
+      ui.view = target;
+    }
+    if (ui.view === 'events') await loadEvents();
+    if (ui.view !== 'home') ui.editing = false;
+    renderSide();
+    render();
+  }
+
+  // ---------- actions ----------
+  const ACTS = {
+    play: async () => { const r = await ej.launch('poe'); if (!r.ok) E.toast(r.error); },
+    pob: async () => { const r = await ej.launch('pob'); if (!r.ok) E.toast(r.error); },
+    'ov-toggle': () => save({ overlay: { enabled: !state.cfg.overlay.enabled } }),
+    'launch-pob': () => save({ launch: { pob: !state.cfg.launch.pob } }),
+    'launch-apt': () => save({ launch: { apt: !state.cfg.launch.apt } }),
+    'launch-we': () => save({ launch: { we: !state.cfg.launch.we } }),
+    'wesync-toggle': () => save({ weSync: { background: !state.cfg.weSync.background } }),
+    'launch-browse': async () => { const f = await ej.pickFile({ filters: [{ name: 'Program', extensions: ['exe'] }] }); if (f) { ui.lnewTarget = f; render(true); } },
+    'launch-add': async () => {
+      const target = (ui.lnewTarget || '').trim();
+      if (!/\.exe$/i.test(target) && !/^https:\/\//i.test(target)) { E.toast('Use a program (.exe) or a link starting with https://'); return; }
+      const custom = state.cfg.launch.custom.concat([{ id: 'c' + Date.now().toString(36), name: (ui.lnewName || '').trim(), target, on: true }]);
+      if (await save({ launch: { custom } })) { ui.lnewName = ''; ui.lnewTarget = ''; render(true); }
+    },
+    'apt': async () => { const r = await ej.launch('apt'); if (r && !r.ok) E.toast(r.error); },
+    'brk-toggle': () => save({ breaks: { enabled: !state.cfg.breaks.enabled } }),
+    'brk-campaign': () => save({ breaks: { campaign: !state.cfg.breaks.campaign } }),
+    'brk-taken': async () => { await ej.breakTaken(); E.toast(`Break noted. The next "Take a break?" comes after ${state.cfg.breaks.everyMin} minutes of play.`); },
+    'ov-unlock': () => ej.lockOverlay(!!state.snap.overlayUnlocked),
+    'ov-reset': () => ej.resetOverlay(),
+    'ns-synced': async () => { await ej.neversinkSynced(); state.snap = await ej.snapshot(); render(true); },
+    edit: () => { ui.editing = true; currentKey = null; render(); },
+    'edit-done': () => { ui.editing = false; currentKey = null; render(); },
+    'layout-reset': async () => {
+      if (await E.confirm({ title: 'Reset layout?', body: 'All cards go back to their default order and size, and hidden cards come back.', ok: 'Reset' })) {
+        await save({ _replaceLayout: true, layout: { order: Object.keys(E.CARDS), sizes: { poe: 'xl' }, hidden: {} } });
+      }
+    },
+    hide: el => save({ layout: { hidden: { [el.dataset.id]: !state.cfg.layout.hidden[el.dataset.id] } } }),
+    'welcome-later': () => save({ ui: { welcomeDone: true } }),
+    collapse: () => save({ ui: { sidebarCollapsed: !state.cfg.ui.sidebarCollapsed } }),
+    motion: () => save({ ui: { motion: !state.cfg.ui.motion } }),
+    'maps-all': async () => { ui.showAllMaps = !ui.showAllMaps; if (ui.showAllMaps) ui.allMaps = await ej.allMaps(); render(true); },
+    'profile-check': async () => { await ej.checkProfile(); state.snap = await ej.snapshot(); render(true); },
+    'wealth-sync': async () => {
+      if (ui.editing) return;
+      const r = await ej.wealthSync();
+      E.toast(r.ok ? 'Wealthy Exile opened: syncing, then exporting…' : `Synced recently. Next sync in ${Math.ceil(r.left / 60000)} min; opened Wealthy Exile.`);
+      state.snap = await ej.snapshot(); render(true);
+    },
+    'storage-refresh': async () => { ui.storage = await ej.storage(); render(true); },
+    'events-more': async () => { await loadEvents('more'); render(true); },
+    rebuild: async () => {
+      if (await E.confirm({ title: 'Rebuild league data?', body: 'Exilogue reads Client.txt again from the league start. A backup of your current stats is kept, so you can go back in Backups below.', ok: 'Rebuild', danger: true })) {
+        const r = await ej.resetLeague();
+        if (r && r.ok === false) E.toast(r.error);
+        state.snap = await ej.snapshot(); ui.events = null; ui.backups = await ej.listBackups(); render(true);
+      }
+    },
+  };
+
+  main.addEventListener('click', async e => {
+    const t = e.target;
+    const url = t.closest('[data-url]');
+    if (url) { e.preventDefault(); ej.openUrl(url.dataset.url); return; }
+    const nav = t.closest('[data-nav]');
+    if (nav) { go(nav.dataset.nav); return; }
+    const act = t.closest('[data-act]');
+    if (act && ACTS[act.dataset.act]) { ACTS[act.dataset.act](act); return; }
+    if (act && act.dataset.act.startsWith('launchc:')) {
+      const id = act.dataset.act.slice(8);
+      return save({ launch: { custom: state.cfg.launch.custom.map(c => (c.id === id ? { ...c, on: !c.on } : c)) } });
+    }
+    const lr = t.closest('[data-lremove]');
+    if (lr) return save({ launch: { custom: state.cfg.launch.custom.filter(c => c.id !== lr.dataset.lremove) } });
+    const tab = t.closest('[data-tab]');
+    if (tab) { ui.settingsTab = tab.dataset.tab; await loadTab(); render(true); return; }
+    const br = t.closest('[data-browse]');
+    if (br) {
+      const key = br.dataset.browse;
+      const f = await ej.pickFile(key === 'clientTxt' ? { filters: [{ name: 'Log file', extensions: ['txt'] }] } : { filters: [{ name: 'Program', extensions: ['exe'] }] });
+      if (!f) return;
+      if (key === 'clientTxt' && !(await E.confirm({ title: 'Use this log?', body: 'Changing Client.txt rebuilds all league stats from the new file. A backup of your current stats is kept.', ok: 'Use it' }))) return;
+      await save({ paths: { [key]: f }, ui: { welcomeDone: true } });
+      return;
+    }
+    const rs = t.closest('[data-restore]');
+    if (rs) {
+      if (await E.confirm({ title: 'Restore this backup?', body: `Your current stats are replaced by the backup from ${E.date(ui.backups.find(b => b.file === rs.dataset.restore)?.at)}. What you have now is backed up first, so this can be undone too.`, ok: 'Restore' })) {
+        const r = await ej.restoreBackup(rs.dataset.restore);
+        if (!r.ok) E.toast(r.error);
+        state.cfg = await ej.getConfig(); // a backup for another log brings its path and start along
+        state.snap = await ej.snapshot(); ui.events = null; ui.backups = await ej.listBackups(); render(true);
+      }
+      return;
+    }
+    const hk = t.closest('[data-hk]');
+    if (hk) { ui.recording = hk.dataset.hk; ej.pauseHotkeys(true); render(true); return; }
+    const hc = t.closest('[data-hkclear]');
+    if (hc) { save({ hotkeys: { [hc.dataset.hkclear]: '' } }); return; }
+    const ef = t.closest('[data-evfilter]');
+    if (ef) { ui.eventsFilter = ef.dataset.evfilter; await loadEvents(); render(true); }
+  });
+  side.addEventListener('click', e => {
+    const url = e.target.closest('[data-url]'); if (url) { ej.openUrl(url.dataset.url); return; }
+    const nav = e.target.closest('[data-nav]'); if (nav) { go(nav.dataset.nav); return; }
+    const act = e.target.closest('[data-act]'); if (act && ACTS[act.dataset.act]) ACTS[act.dataset.act](act);
+  });
+
+  // Typing in the "add a program" fields: kept in ui so a re-render doesn't lose it.
+  main.addEventListener('input', e => {
+    const k = e.target.dataset && e.target.dataset.lnew;
+    if (k === 'name') ui.lnewName = e.target.value; else if (k === 'target') ui.lnewTarget = e.target.value;
+  });
+  main.addEventListener('change', async e => {
+    const t = e.target;
+    if ('brkevery' in t.dataset) return save({ breaks: { everyMin: Number(t.value) } });
+    if ('weevery' in t.dataset) return save({ weSync: { everyMin: Number(t.value) } });
+    if ('ovfont' in t.dataset) return save({ overlay: { font: t.value } });
+    if ('ovsize' in t.dataset) return save({ overlay: { size: t.value } });
+    if ('theme' in t.dataset) return save({ ui: { theme: t.value } });
+    if (t.dataset.pal) return save({ ui: { [t.dataset.pal]: t.value } });
+    if ('font' in t.dataset) return save({ ui: { font: t.value } });
+    if (t.dataset.sizesel) return save({ layout: { sizes: { [t.dataset.sizesel]: t.value } } });
+    if ('evchar' in t.dataset) { ui.eventsChar = t.value; await loadEvents(); return render(true); }
+    if (t.dataset.path) {
+      const p = t.dataset.path, prev = p.split('.').reduce((o, k) => o && o[k], state.cfg) || '';
+      const val = t.value.trim();
+      if (val === String(prev).slice(0, p === 'league.start' ? 16 : undefined)) return;
+      if ((p === 'paths.clientTxt' || p === 'league.start') &&
+        !(await E.confirm({ title: 'Rebuild league stats?', body: 'This rebuilds all league stats from Client.txt. A backup of your current stats is kept.', ok: 'Rebuild' }))) {
+        t.value = p === 'league.start' ? String(prev).slice(0, 16) : prev; return;
+      }
+      const patch = {}; let o = patch; const parts = p.split('.');
+      parts.slice(0, -1).forEach(k => { o = o[k] = {}; });
+      o[parts[parts.length - 1]] = val;
+      if (p.startsWith('paths.')) patch.ui = { welcomeDone: true };
+      if (!(await save(patch))) t.value = p === 'league.start' ? String(prev).slice(0, 16) : prev;
+    }
+  });
+
+  // ---------- hotkey recording ----------
+  // KeyboardEvent.code -> Electron accelerator key name
+  const CODE_MAP = { Comma: ',', Period: '.', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'",
+    Backquote: '`', Slash: '/', Backslash: '\\', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Space: 'Space',
+    Enter: 'Enter', Tab: 'Tab', Backspace: 'Backspace', Delete: 'Delete', Insert: 'Insert', Home: 'Home', End: 'End', PageUp: 'PageUp',
+    PageDown: 'PageDown', NumpadAdd: 'numadd', NumpadSubtract: 'numsub', NumpadMultiply: 'nummult', NumpadDivide: 'numdiv', NumpadDecimal: 'numdec' };
+  function accelKey(e) {
+    const c = e.code;
+    if (/^Key[A-Z]$/.test(c)) return c.slice(3);
+    if (/^Digit\d$/.test(c)) return c.slice(5);
+    if (/^Numpad\d$/.test(c)) return 'num' + c.slice(6);
+    if (/^F([1-9]|1\d|2[0-4])$/.test(c)) return c;
+    return CODE_MAP[c] || null;
+  }
+  window.addEventListener('keydown', e => {
+    if (!ui.recording) return;
+    e.preventDefault(); e.stopPropagation();
+    const key = ui.recording;
+    if (e.key === 'Escape') { ui.recording = null; ej.pauseHotkeys(false); render(true); return; }
+    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
+    const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift'].filter(Boolean);
+    const k = accelKey(e);
+    if (!k) return; // a key Electron can't use as a hotkey
+    // Numpad and F13–F24 work alone (made for macro keys); anything else needs a modifier so typing stays free.
+    if (!mods.length && !/^num/.test(k) && !/^F(1[3-9]|2[0-4])$/.test(k)) return;
+    ui.recording = null;
+    ej.pauseHotkeys(false);
+    save({ hotkeys: { [key]: [...mods, k].join('+') } });
+  }, true);
+
+  // Never let a dropped file navigate the window away.
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('drop', e => e.preventDefault());
+
+  // ---------- live data ----------
+  // Full snapshot: data changed. Tick: only the running timers. Nothing is drawn while the window can't be seen
+  // (minimized, or covered by the game); main stops sending then, and a fresh snapshot is fetched when it shows again.
+  function onData(full, prevHk) {
+    if (ui.editing || document.hidden) return;
+    const page = pageFor(ui.view);
+    if (ui.view === 'events') {
+      if (full && state.snap.stats && state.snap.stats.eventSeq !== ui.eventSeq) loadEvents('new').then(() => render(true));
+      return;
+    }
+    if (ui.view === 'settings') { if (full) render(JSON.stringify([state.snap.hotkeys, state.snap.profileStatus]) !== prevHk); return; }
+    if (full) render(page.data !== false); else if (page.live) render();
+  }
+  // Tool icons come separately (data: URLs, only when they change), not with every snapshot.
+  function syncIcons() {
+    const rev = state.snap && state.snap.iconsRev;
+    if (rev == null || rev === state.iconsRev) return;
+    state.iconsRev = rev;
+    ej.icons().then(map => { state.icons = map || {}; if (!ui.editing && !document.hidden) render(true); });
+  }
+  ej.onSnapshot(s => {
+    const prevHk = JSON.stringify([state.snap && state.snap.hotkeys, state.snap && state.snap.profileStatus]);
+    state.snap = s;
+    syncIcons();
+    onData(true, prevHk);
+  });
+  ej.onTick(t => { E.applyTick(state.snap, t); onData(false); });
+  document.addEventListener('visibilitychange', async () => {
+    ej.setVisible(!document.hidden);
+    if (document.hidden) return;
+    state.snap = await ej.snapshot();
+    syncIcons();
+    if (ui.view === 'events') await loadEvents('new');
+    render(true);
+  });
+  ej.onConfig(c => { applyConfig(c); render(true); });
+
+  applyConfig(state.cfg);
+  go(location.hash.slice(1) || 'home');
+})();
