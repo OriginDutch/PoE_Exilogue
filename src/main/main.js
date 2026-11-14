@@ -577,7 +577,13 @@ function annotateSessions() {
 
 // ---------- background Wealthy Exile sync ----------
 let weServer = null, weScriptSeenAt = 0, weBgSyncAt = 0, weBgPrev = 0; // weBgPrev: put back when the script reports it couldn't sync
+// Tile button: the request waits here until the userscript asks (WE redirects / to /stash and drops the #marker,
+// so the URL can't carry it). Handed out once, valid for 2 minutes.
+let weManualAt = 0, weLastGo = null; // weLastGo: 'manual' | 'bg', so /failed knows what to undo
+const WE_MANUAL_MS = 2 * 60 * 1000;
 function weDecide() {
+  if (weManualAt && Date.now() - weManualAt < WE_MANUAL_MS) { weManualAt = 0; weLastGo = 'manual'; return true; }
+  weManualAt = 0;
   const b = config.data.weSync;
   const go = !!wealth && caughtUp && shouldSync({
     enabled: b.background, everyMin: b.everyMin, gameRunning, now: Date.now(),
@@ -585,11 +591,11 @@ function weDecide() {
     area: tracker && tracker.s.area,
     lastSyncAt: Math.max(wealthSyncAt, weBgSyncAt), lastExportAt: wealth.latestAt(),
   });
-  if (go) { weBgPrev = weBgSyncAt; weBgSyncAt = Date.now(); }
+  if (go) { weBgPrev = weBgSyncAt; weBgSyncAt = Date.now(); weLastGo = 'bg'; }
   return go;
 }
 function startWeSync() {
-  weServer = new WeSyncServer({ decide: weDecide, onAsk: () => { weScriptSeenAt = Date.now(); }, onFailed: () => { weBgSyncAt = weBgPrev; } });
+  weServer = new WeSyncServer({ decide: weDecide, onAsk: () => { weScriptSeenAt = Date.now(); }, onFailed: () => { if (weLastGo === 'manual') wealthSyncAt = 0; else if (weLastGo === 'bg') weBgSyncAt = weBgPrev; weLastGo = null; } });
   weServer.start();
 }
 
@@ -1007,7 +1013,8 @@ function setupIpc() {
     const left = wealthSyncAt + WEALTH_SYNC_MS - Date.now();
     if (left > 0) { shell.openExternal(WEALTH_URL); return { ok: false, left }; }
     wealthSyncAt = Date.now();
-    shell.openExternal(WEALTH_URL + '#exilogue-sync');
+    weManualAt = wealthSyncAt; // picked up by the userscript via /we-sync (any open WE tab, or the one opened here)
+    shell.openExternal(WEALTH_URL + '#exilogue-sync'); // marker kept as a fallback if the server isn't reachable
     return { ok: true };
   });
   ipcMain.handle('pick:file', async (_e, opts) => {

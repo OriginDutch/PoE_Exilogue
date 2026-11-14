@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Exilogue – Wealthy Exile auto export
 // @namespace    exilogue
-// @version      1.5
+// @version      1.6
 // @description  After a sync on Wealthy Exile (yours, started from Exilogue's tile, or Exilogue's background sync while you play), waits until it is done and clicks ··· › Export CSV. Exilogue picks the file up from Downloads.
 // @match        https://wealthyexile.com/*
 // @match        https://www.wealthyexile.com/*
@@ -19,7 +19,7 @@
   try {
     if (location.hash === '#' + MARK) { sessionStorage.setItem(MARK, String(Date.now())); history.replaceState(null, '', location.pathname + location.search); }
   } catch { /* storage blocked */ }
-  console.log('[Exilogue] userscript loaded on', location.href);
+  console.log('[Exilogue] userscript v1.6 loaded on', location.href, (() => { try { return sessionStorage.getItem(MARK) ? '(sync marker found)' : ''; } catch { return ''; } })());
   // Wealthy Exile is built with Mantine (Nov 2026 markup):
   //  - "···" button: <button aria-label="more …"> with <svg class="tabler-icon-dots">
   //  - its menu: <a download="Wealthy-Exile-export-…" href="blob:…"><button role="menuitem">… Export CSV</button></a>
@@ -83,7 +83,7 @@
     return null;
   }
 
-  async function exportAfterSync(btn) {
+  async function exportAfterSync(btn, nested) {
     busy = true;
     try {
       log('sync clicked, waiting for it to finish…');
@@ -96,18 +96,18 @@
         const fresh = l && FRESH.test(l.textContent || '');
         return started ? (!isLoading(b) && fresh) : fresh;
       }, WAIT_MS);
-      if (!done) { toast('Exilogue: sync not confirmed, no export'); return false; }
+      if (!done) { log('sync not confirmed within 3 min'); toast('Exilogue: sync not confirmed, no export'); return false; }
       await sleep(1500); // let the table refresh
       const more = moreButton();
-      if (!more) { toast('Exilogue: ··· button not found'); return false; }
+      if (!more) { log('··· button not found'); toast('Exilogue: ··· button not found'); return false; }
       more.click();
       const item = await waitFor(exportItem, 5000);
-      if (!item) { toast('Exilogue: "Export CSV" not found'); return false; }
+      if (!item) { log('Export CSV item not found'); toast('Exilogue: "Export CSV" not found'); return false; }
       item.click(); // inside <a download href="blob:…">: the click starts the download
       log('exported');
       toast('Exilogue: CSV exported ✓');
       return true;
-    } finally { busy = false; }
+    } finally { if (!nested) busy = false; }
   }
 
   // In-site link to the stash page (an <a href="/stash">, or a menu entry called "Stash").
@@ -122,43 +122,56 @@
   }
 
   // Opened from Exilogue's tile (…/stash#exilogue-sync): press sync ourselves, then export.
-  async function syncFromExilogue() {
+  async function syncFromExilogue(why) {
+    if (busy) { log('sync requested (' + why + ') but already busy'); return true; }
+    busy = true;
     try { sessionStorage.removeItem(MARK); } catch { /* ignore */ } // a reload must not sync again
+    log('sync requested (' + why + '), waiting for the stash page…');
     toast('Exilogue: waiting for the stash page…');
+    try { return await syncSteps(); } finally { busy = false; }
+  }
+  async function syncSteps() {
     // A direct link to /stash lands on the home page: go to the stash page the way a click in the site would.
     if (!/\/stash\b/.test(location.pathname)) {
+      log('not on /stash (' + location.pathname + '), looking for the Stash link…');
       const link = await waitFor(stashLink, 20000);
+      log(link ? 'Stash link found, clicking' : 'Stash link not found');
       if (link) link.click();
     }
     const btn = await waitFor(syncButton, 45000); // the stash page loads its data first (and maybe a login)
-    if (!btn) { toast('Exilogue: sync button not found (open the Stash page, then try again)'); return false; }
-    if (isLoading(btn)) { toast('Exilogue: sync not available right now (Wealthy Exile cooldown?)'); return false; }
+    if (!btn) { log('sync button not found'); toast('Exilogue: sync button not found (open the Stash page, then try again)'); return false; }
+    if (isLoading(btn)) { log('sync button busy/disabled'); toast('Exilogue: sync not available right now (Wealthy Exile cooldown?)'); return false; }
+    log('sync button found, clicking');
     btn.click();
-    return exportAfterSync(btn);
+    return exportAfterSync(btn, true);
   }
   // Background sync: once a minute, ask Exilogue (on this PC only) whether now is a good moment.
   // It says yes at most every 30 minutes, between maps, while the game runs. Exilogue not running = no answer = nothing happens.
   function askExilogue() {
     if (busy || typeof GM_xmlhttpRequest !== 'function') return;
+    const wasFirst = first; first = false;
     GM_xmlhttpRequest({
       method: 'GET', url: 'http://127.0.0.1:47615/we-sync', timeout: 5000, headers: { 'X-Exilogue': '1' },
       onload: r => {
         let go = false;
         try { go = JSON.parse(r.responseText).go === true; } catch { /* not Exilogue */ }
         if (go && !busy) {
-          log('background sync requested by Exilogue');
-          syncFromExilogue().then(ok => { if (!ok) GM_xmlhttpRequest({ method: 'GET', url: 'http://127.0.0.1:47615/we-sync/failed', headers: { 'X-Exilogue': '1' } }); });
+          syncFromExilogue('asked Exilogue').then(ok => { if (!ok) GM_xmlhttpRequest({ method: 'GET', url: 'http://127.0.0.1:47615/we-sync/failed', headers: { 'X-Exilogue': '1' } }); });
         }
       },
+      onerror: () => { if (wasFirst) log('Exilogue not reachable on 127.0.0.1:47615 (not running?)'); },
+      ontimeout: () => { if (wasFirst) log('Exilogue did not answer in time'); },
     });
   }
+  let first = true;
 
   const start = () => {
-    setTimeout(askExilogue, 5000);
-    setInterval(askExilogue, 60 * 1000);
     let at = 0;
     try { at = Number(sessionStorage.getItem(MARK) || 0); } catch { /* ignore */ }
-    if (at && Date.now() - at < 120000) syncFromExilogue();
+    if (at && Date.now() - at < 120000) syncFromExilogue('#marker');
+    // Ask right away: a sync started from Exilogue's tile is waiting there (the #marker gets lost in WE's redirect).
+    setTimeout(askExilogue, 800);
+    setInterval(askExilogue, 60 * 1000);
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
 
