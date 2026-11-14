@@ -418,3 +418,15 @@ html.no-motion .view{animation:none}
 .mapsgrid .row.ell{white-space:normal}
 .dnotes li{list-style:disc}
 .dnotes li{list-style-position:inside}
+
+/* toasts (non-blocking) */
+.toasts{position:fixed;right:18px;bottom:18px;z-index:30;display:flex;flex-direction:column;gap:8px;align-items:flex-end;pointer-events:none}
+.toast{pointer-events:auto;display:flex;align-items:flex-start;gap:10px;max-width:380px;background:var(--card);border:1px solid var(--line2);border-left:3px solid var(--acc);border-radius:10px;padding:10px 10px 10px 14px;font-size:13.5px;color:var(--tx);box-shadow:0 14px 30px -12px rgba(0,0,0,.75);animation:toast-in .18s ease-out}
+.toast.err{border-left-color:var(--bad)}
+.toast.ok{border-left-color:var(--ok)}
+.toast .tm{flex:1;line-height:1.4}
+.toast .tx{background:none;border:0;color:var(--tx3);font-size:16px;line-height:1;cursor:pointer;padding:2px 4px;border-radius:4px}
+.toast .tx:hover,.toast .tx:focus-visible{color:var(--tx)}
+.toast.out{opacity:0;transform:translateY(6px);transition:opacity .2s,transform .2s}
+@keyframes toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.toast{animation:none}.toast.out{transition:none}}

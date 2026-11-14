@@ -144,7 +144,30 @@ EX.confirm = ({ title, body, ok = 'Continue', danger = false, cancel = 'Cancel' 
   wrap.querySelector('[data-r="1"]').focus();
 });
 
-EX.toast = msg => EX.confirm({ title: 'Heads up', body: msg, ok: 'OK', cancel: 'Close' });
+// Non-blocking toast, bottom right. Info fades after 4 s; errors stay 9 s and can be closed. Returns a resolved promise
+// so old `await E.toast(…)` callers keep working.
+EX.toast = (msg, opts = {}) => {
+  let host = document.querySelector('.toasts');
+  if (!host) {
+    host = document.createElement('div');
+    host.className = 'toasts';
+    host.setAttribute('role', 'status');
+    host.setAttribute('aria-live', 'polite');
+    document.querySelector('.app').appendChild(host);
+  }
+  const err = opts.kind === 'error';
+  const t = document.createElement('div');
+  t.className = 'toast' + (err ? ' err' : '') + (opts.kind === 'ok' ? ' ok' : '');
+  t.innerHTML = `<span class="tm"></span><button class="tx" aria-label="Dismiss">×</button>`;
+  t.querySelector('.tm').textContent = String(msg);
+  const close = () => { if (!t.isConnected) return; t.classList.add('out'); setTimeout(() => t.remove(), 200); };
+  t.querySelector('.tx').addEventListener('click', close);
+  host.appendChild(t);
+  while (host.children.length > 3) host.firstElementChild.remove();
+  setTimeout(close, opts.ms || (err ? 9000 : 4000));
+  return Promise.resolve();
+};
+EX.toastError = msg => EX.toast(msg, { kind: 'error' });
 
 // Main sends a full snapshot only when data changed; in between, a tick with just the running timers.
 EX.applyTick = (snap, tk) => {

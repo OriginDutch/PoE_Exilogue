@@ -14,7 +14,7 @@
 
   async function save(patch) {
     const c = await ej.setConfig(patch);
-    if (c._error) { await E.toast(c._error); return false; }
+    if (c._error) { await E.toastError(c._error); return false; }
     applyConfig(c);
     render(true);
     return true;
@@ -148,8 +148,8 @@
 
   // ---------- actions ----------
   const ACTS = {
-    play: async () => { const r = await ej.launch('poe'); if (!r.ok) E.toast(r.error); },
-    pob: async () => { const r = await ej.launch('pob'); if (!r.ok) E.toast(r.error); },
+    play: async () => { const r = await ej.launch('poe'); if (!r.ok) E.toastError(r.error); },
+    pob: async () => { const r = await ej.launch('pob'); if (!r.ok) E.toastError(r.error); },
     'ov-toggle': () => save({ overlay: { enabled: !state.cfg.overlay.enabled } }),
     'launch-pob': () => save({ launch: { pob: !state.cfg.launch.pob } }),
     'launch-apt': () => save({ launch: { apt: !state.cfg.launch.apt } }),
@@ -162,8 +162,8 @@
       const custom = state.cfg.launch.custom.concat([{ id: 'c' + Date.now().toString(36), name: (ui.lnewName || '').trim(), target, on: true }]);
       if (await save({ launch: { custom } })) { ui.lnewName = ''; ui.lnewTarget = ''; render(true); }
     },
-    'apt': async () => { const r = await ej.launch('apt'); if (r && !r.ok) E.toast(r.error); },
-    'update-install': async () => { const r = await ej.updateInstall(); if (r && !r.ok) E.toast(r.error); },
+    'apt': async () => { const r = await ej.launch('apt'); if (r && !r.ok) E.toastError(r.error); },
+    'update-install': async () => { const r = await ej.updateInstall(); if (r && !r.ok) E.toastError(r.error); },
     'update-check': async () => { await ej.updateCheck(); E.toast('Checking for updates…'); setTimeout(() => render(true), 3000); },
     'brk-toggle': () => save({ breaks: { enabled: !state.cfg.breaks.enabled } }),
     'brk-campaign': () => save({ breaks: { campaign: !state.cfg.breaks.campaign } }),
@@ -187,7 +187,8 @@
     'wealth-sync': async () => {
       if (ui.editing) return;
       const r = await ej.wealthSync();
-      E.toast(r.ok ? 'Wealthy Exile opened: syncing, then exporting…' : `Synced recently. Next sync in ${Math.ceil(r.left / 60000)} min; opened Wealthy Exile.`);
+      if (r.ok) { ui.weWaitSince = Date.now(); ui.weWaitAt = (state.snap.wealth && state.snap.wealth.at) || 0; }
+      E.toast(r.ok ? 'Wealthy Exile opened, syncing…' : `Synced recently. Next sync in ${Math.ceil(r.left / 60000)} min; opened Wealthy Exile.`);
       state.snap = await ej.snapshot(); render(true);
     },
     'storage-refresh': async () => { ui.storage = await ej.storage(); render(true); },
@@ -195,7 +196,7 @@
     rebuild: async () => {
       if (await E.confirm({ title: 'Rebuild league data?', body: 'Exilogue reads Client.txt again from the league start. A backup of your current stats is kept, so you can go back in Backups below.', ok: 'Rebuild', danger: true })) {
         const r = await ej.resetLeague();
-        if (r && r.ok === false) E.toast(r.error);
+        if (r && r.ok === false) E.toastError(r.error);
         state.snap = await ej.snapshot(); ui.events = null; ui.backups = await ej.listBackups(); render(true);
       }
     },
@@ -230,7 +231,7 @@
     if (rs) {
       if (await E.confirm({ title: 'Restore this backup?', body: `Your current stats are replaced by the backup from ${E.date(ui.backups.find(b => b.file === rs.dataset.restore)?.at)}. What you have now is backed up first, so this can be undone too.`, ok: 'Restore' })) {
         const r = await ej.restoreBackup(rs.dataset.restore);
-        if (!r.ok) E.toast(r.error);
+        if (!r.ok) E.toastError(r.error);
         state.cfg = await ej.getConfig(); // a backup for another log brings its path and start along
         state.snap = await ej.snapshot(); ui.events = null; ui.backups = await ej.listBackups(); render(true);
       }
@@ -338,6 +339,12 @@
   ej.onSnapshot(s => {
     const prevHk = JSON.stringify([state.snap && state.snap.hotkeys, state.snap && state.snap.profileStatus]);
     state.snap = s;
+    // After a sync from the tile: say so once the new export has been picked up (gives up after 5 minutes).
+    if (ui.weWaitSince) {
+      const at = s.wealth && s.wealth.at;
+      if (at && at > ui.weWaitAt) { ui.weWaitSince = 0; E.toast('Wealthy Exile export picked up ✓', { kind: 'ok' }); }
+      else if (Date.now() - ui.weWaitSince > 5 * 60e3) ui.weWaitSince = 0;
+    }
     syncIcons();
     onData(true, prevHk);
   });
