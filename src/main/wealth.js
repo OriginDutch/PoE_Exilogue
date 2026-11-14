@@ -203,6 +203,16 @@ class Wealth {
     };
   }
 
+  // Chaos value over time since `since`, evenly thinned to at most `max` points: [{ t, divines }].
+  history(since, max = 40) {
+    const rows = this.db.prepare('SELECT t, chaos, div_price FROM exports WHERE t >= ? ORDER BY t ASC').all(since);
+    const pts = rows.filter(r => r.div_price > 0).map(r => ({ t: r.t, divines: r.chaos / r.div_price }));
+    if (pts.length <= max) return pts;
+    const out = [];
+    for (let i = 0; i < max; i++) out.push(pts[Math.round(i * (pts.length - 1) / (max - 1))]);
+    return out;
+  }
+
   latestAt() { const r = this.db.prepare('SELECT MAX(t) t FROM exports').get(); return (r && r.t) || 0; }
 
   // Wealth change over a play session, from the exports around it.

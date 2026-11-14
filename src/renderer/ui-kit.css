@@ -367,3 +367,54 @@ html.no-motion .view{animation:none}
 .minibar{display:inline-block;width:80px;height:5px;border-radius:3px;background:var(--line);overflow:hidden}
 .minibar i{display:block;height:100%;background:var(--live)}.minibar i.bad{background:var(--bad)}
 .notes{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;color:var(--tx2);font-size:14px;max-height:420px;overflow:auto}
+
+/* ===== v0.6 Home: info-rich tiles ===== */
+.dense-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;align-items:stretch}
+@media (max-width:1180px){.dense-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.card.dn{gap:10px;padding:14px 16px;min-height:0}
+.card.dn.wide{grid-column:span 2}
+.card.dn .ch .open{font-size:15px}
+.dlist{display:flex;flex-direction:column}
+.dlist>div{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:3px 0;border-bottom:1px solid var(--line);font-size:13px;min-width:0}
+.dlist>div:last-child{border-bottom:0}
+.dlist span{color:var(--tx2);min-width:0}.dlist b{font-weight:600;white-space:nowrap}
+.dgrid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.dbox{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
+.dt{display:inline-block;font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:1px;white-space:nowrap}
+.dt.w{color:#eef1f5;background:rgba(238,241,245,.12)}.dt.y{color:#f0cf62;background:rgba(240,207,98,.14)}.dt.r{color:#f07466;background:rgba(240,116,102,.15)}
+.t-paper .dt.w{color:#3b4350;background:rgba(40,50,70,.08)}.t-paper .dt.y{color:#8a6a10;background:rgba(160,120,20,.12)}.t-paper .dt.r{color:#a8382a;background:rgba(168,56,42,.1)}
+.spark{width:100%;height:54px;display:block}
+.dtbl{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+.dtbl th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);font-weight:600;padding:0 0 4px}
+.dtbl th:nth-child(2){width:46px}.dtbl th:nth-child(3){width:52px}.dtbl th:nth-child(4){width:52px}
+.dtbl td{padding:3px 0;border-top:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dtbl .r{text-align:right}
+.mapsgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:20px;flex:1;min-height:0}
+.res{display:flex;gap:6px}.res span{flex:1;text-align:center;font-weight:700;font-size:13px;padding:3px 0;border-radius:5px;color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent)}
+.dnotes{margin:0;padding-left:16px;color:var(--tx2);font-size:13px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.dnotes li{max-width:100%}
+.dv{font-size:30px;font-weight:700;color:var(--ok);line-height:1.1;display:flex;align-items:center;gap:6px;justify-content:flex-end}
+.dv.lg{font-size:26px;color:var(--tx);justify-content:flex-start;gap:8px}
+.bigt{font-size:26px;font-weight:700;line-height:1;white-space:nowrap}
+.uni{color:#d0823f}.bar.uni i{background:#d0823f}
+.wsync{color:var(--tx3);display:inline-flex}
+.lnk{background:none;border:0;padding:0;color:var(--acc-tx);font:inherit;cursor:pointer;text-decoration:underline}
+/* Real game art */
+.gi{flex:none;display:inline-block;vertical-align:middle;object-fit:contain}
+.gi.cur{width:22px;height:22px}.gi.cur.lg{width:30px;height:30px}
+.gi.item{width:40px;height:20px}
+/* Map icon as in game: round base in the tier colour, GGG's glyph on top */
+.mapic{flex:none;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#14171d;box-shadow:inset 0 0 0 1.6px var(--mc),0 0 6px color-mix(in srgb,var(--mc) 35%,transparent);--mc:#8fa0b5}
+.mapic.w{--mc:#dfe3e9}.mapic.y{--mc:#e6c55a}.mapic.r{--mc:#e2665a}
+.mapic img{width:72%;height:72%;object-fit:contain}
+.mapic.lg{width:30px;height:30px;margin-right:8px}
+/* League art behind everything (dark themes); tiles slightly see-through so it shows. The sidebar stays opaque. */
+.app:not(.t-paper) .wbody{position:relative;isolation:isolate}
+.app:not(.t-paper) .wbody::before{content:"";position:absolute;inset:0;z-index:-2;pointer-events:none;background:url(bg/covens.jpg) center/cover;opacity:.9;filter:brightness(2.1) saturate(1.25)}
+.app:not(.t-paper) .wbody::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(130% 100% at 50% 35%,transparent 45%,rgba(0,0,0,.5)),url(bg/grain.png);opacity:.5}
+.app:not(.t-paper) .card,.app:not(.t-paper) .box{background:color-mix(in srgb,var(--card) 84%,transparent)}
+.app.nobg .wbody::before,.app.nobg .wbody::after{display:none}
+.dnotes li.ell{display:list-item}
+.mapsgrid{grid-template-columns:minmax(0,1fr) minmax(0,1.25fr)}
+.mapsgrid .row.ell{white-space:normal}
+.dnotes li{list-style:disc}
+.dnotes li{list-style-position:inside}

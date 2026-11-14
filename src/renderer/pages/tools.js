@@ -114,7 +114,7 @@
       const th = COLS.map(([k, l, , , r]) => `<th class="${r ? 'r' : ''}" aria-sort="${k === sortKey ? (dir < 0 ? 'descending' : 'ascending') : 'none'}"><button class="thb" data-msort="${k}">${l}${k === sortKey ? (dir < 0 ? ' ▾' : ' ▴') : ''}</button></th>`).join('');
       const rows = groups.map(g => {
         const dpm = g.deaths / g.runs;
-        const avgCls = allAvg && g.runs >= 2 ? (g.avg <= allAvg * 0.85 ? 'good' : g.avg >= allAvg * 1.25 ? 'bad' : '') : '';
+        const avgCls = ''; // neutral: no judgement on map speed (layout, mobs and luck decide most of it)
         const open = ui.mapOpen === g.key;
         const main = `<tr class="click${open ? ' open' : ''}" data-mgroup="${E.esc(g.key)}"><td style="font-weight:600">${E.esc(g.name)}</td><td>${g.tier ? 'T' + g.tier : '–'}</td><td class="r">${g.runs}</td>
           <td class="r ${avgCls}">${E.fmt(g.avg)}</td><td class="r">${E.fmt(g.best)}</td><td class="r ${g.deaths && dpm >= 0.5 ? 'bad' : ''}">${g.deaths}</td>
@@ -136,7 +136,7 @@
             <select class="select" style="width:auto" data-mscope aria-label="Which maps"><option value="league" ${sessionOnly ? '' : 'selected'}>This league</option><option value="session" ${sessionOnly ? 'selected' : ''}>This session</option></select>
           </div>
           ${rows ? `<div class="tblwrap"><table class="tbl mapstat"><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table></div>
-            <div class="sub">Click a column to sort · click a map for its runs. Avg time green = clearly faster than your average, red = clearly slower.</div>` : empty}
+            <div class="sub">Click a column to sort · click a map for its runs.</div>` : empty}
         </section>`;
     },
     mount(el) {

@@ -54,8 +54,8 @@
       const head = `<div class="head"><div><div class="lbl" style="margin-bottom:6px">${headline(cfg)}</div><h1 class="h">Home</h1></div>
         ${editing ? '' : `<button class="btn" data-act="edit">${ic.grid()} Edit layout</button>`}</div>`;
       if (editing) return head + editView(ctx);
-      const cards = cfg.layout.order.filter(id => !cfg.layout.hidden[id] && E.CARDS[id] && E.CARDS[id].kind !== 'soon').map(id => E.cardHtml(id, sizeOf(cfg, id), ctx)).join('');
-      return head + banners(ctx) + `<div class="grid">${cards}</div>`;
+      const tiles = E.tileOrder(cfg).filter(id => !cfg.layout.hidden[id]).map(id => E.tileHtml(id, ctx)).join('');
+      return head + banners(ctx) + `<div class="dense-grid">${tiles}</div>`;
     },
     mount(el, ctx) {
       // drag & drop for edit mode
@@ -72,8 +72,10 @@
       el.addEventListener('drop', e => {
         const c = e.target.closest('[data-edcard]'); if (!c || !dragId) return;
         e.preventDefault();
-        const order = EX.state.cfg.layout.order.filter(id => id !== dragId);
+        if (c.dataset.edcard === dragId) { dragId = null; return; } // dropped on itself: nothing moves
+        const order = E.tileOrder(EX.state.cfg).filter(id => id !== dragId);
         order.splice(order.indexOf(c.dataset.edcard), 0, dragId);
+        order.push(...EX.state.cfg.layout.order.filter(id => !order.includes(id)));
         dragId = null;
         ctx.save({ layout: { order } });
       });
@@ -81,9 +83,10 @@
         const g = e.target.closest('[data-grip]'); if (!g) return;
         const delta = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key]; if (!delta) return;
         e.preventDefault();
-        const id = g.dataset.grip, order = EX.state.cfg.layout.order.slice(), i = order.indexOf(id), j = i + delta;
+        const id = g.dataset.grip, order = E.tileOrder(EX.state.cfg), i = order.indexOf(id), j = i + delta;
         if (j < 0 || j >= order.length) return;
         [order[i], order[j]] = [order[j], order[i]];
+        order.push(...EX.state.cfg.layout.order.filter(x => !order.includes(x)));
         ctx.save({ layout: { order } }).then(() => el.querySelector(`[data-grip="${id}"]`)?.focus());
       });
       el.addEventListener('input', e => {
@@ -96,6 +99,23 @@
   };
 
   function editView(ctx) {
+    const { cfg } = ctx;
+    const tiles = E.tileOrder(cfg).map(id => {
+      const t = E.TILES[id], hidden = !!cfg.layout.hidden[id];
+      return `<section class="card dn ed${t.wide ? ' wide' : ''}${hidden ? ' hid' : ''}" data-edcard="${id}" draggable="true">
+        <div class="ch"><button class="grip" data-grip="${id}" aria-label="Move ${E.esc(t.name)}: drag, or use arrow keys">${ic.grip()}</button>
+          ${E.logo({ id, mono: E.CARDS[id] ? E.CARDS[id].mono : id.slice(0, 2).toUpperCase() })}
+          <div class="t"><span class="ell" style="display:block;font-size:15px;font-weight:600">${E.esc(t.name)}</span><div class="sub">${t.wide ? 'Two columns wide' : 'One column'}${hidden ? ' · hidden' : ''}</div></div>
+          <button class="btn i sm" data-act="hide" data-id="${id}" aria-pressed="${hidden}" aria-label="${hidden ? 'Show' : 'Hide'} ${E.esc(t.name)}">${hidden ? ic.eyeOff() : ic.eye()}</button></div>
+      </section>`;
+    }).join('');
+    return `<div class="editbar">${ic.grid()}
+      <div class="grow"><div style="font-weight:600">Editing layout</div><div class="sub">Drag to reorder (or focus the handle and use the arrow keys) · hide what you don't use. Saved automatically.</div></div>
+      <button class="btn q" data-act="layout-reset">Reset to default</button><button class="btn p" data-act="edit-done">Done</button></div>
+      <div class="dense-grid">${tiles}</div>`;
+  }
+
+  function editViewOld(ctx) {
     const { cfg } = ctx;
     const cards = cfg.layout.order.filter(id => E.CARDS[id] && E.CARDS[id].kind !== 'soon').map(id => {
       const def = E.CARDS[id], size = sizeOf(cfg, id), idx = E.SIZES.indexOf(size), hidden = !!cfg.layout.hidden[id];

@@ -17,6 +17,7 @@
     return src ? `<span class="logo img${lg ? ' lg' : ''}${tierCls(def.id)}" aria-hidden="true"><img src="${E.esc(src)}" alt=""></span>`
       : `<span class="logo${lg ? ' lg' : ''}" aria-hidden="true">${def.mono}</span>`;
   };
+  EX.iconOf = iconOf; EX.logo = logo;
   function head(def, { lg = false, sub = '', right = '', size = 16 } = {}) {
     const open = def.kind === 'link'
       ? `<button class="open" data-url="${def.url}" style="font-size:${size}px">${def.name}</button>`
@@ -151,12 +152,12 @@
       return `${head(def, { right: ic.chev() })}
         <div class="row between push" style="align-items:flex-end"><div class="grow"><div style="font-size:14px;font-weight:600" class="ell">${m ? mapName(m) + (m.tier ? ' · T' + m.tier : '') : 'Not in a map'}</div><div class="sub">${s ? s.mapsDone : 0} maps this session</div></div><div class="big">${m ? E.fmt(m.activeMs) : '–'}</div></div>`;
     }
-    const best = fast ? `Best: ${mapName(fast)}${fast.tier ? ' T' + fast.tier : ''} ${E.fmt(fast.activeMs)}` : 'No maps yet';
+    const best = fast ? `Fastest: ${mapName(fast)}${fast.tier ? ' T' + fast.tier : ''} ${E.fmt(fast.activeMs)}` : 'No maps yet';
     if (size === 'm') return `${head(def, { right: ic.chev() })}${cur}<div class="row between push"><span class="sub ell">${best}</span><span class="sub">${st.totals.mapsDone} maps</span></div>`;
     const league = `<dl class="kvs">
       <div><dt>Maps</dt><dd>${s ? s.mapsDone : 0} <span>/ ${st.totals.mapsDone} league</span></dd></div>
       <div><dt>Deaths</dt><dd>${s ? s.deaths : 0} <span>/ ${st.totals.deaths} league</span></dd></div>
-      <div><dt>Best</dt><dd>${fast ? E.fmt(fast.activeMs) + ` <span>${mapName(fast)}</span>` : '–'}</dd></div></dl>`;
+      <div><dt>Fastest</dt><dd>${fast ? E.fmt(fast.activeMs) + ` <span>${mapName(fast)}</span>` : '–'}</dd></div></dl>`;
     if (size === 'l') {
       return `${head(def, { right: ic.chev() })}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;flex:1;min-height:0"><div style="min-width:0">${cur}</div><div style="border-left:1px solid var(--line);padding-left:20px;min-width:0">${league}</div></div>`;

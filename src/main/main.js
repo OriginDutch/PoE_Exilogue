@@ -103,6 +103,8 @@ function sanitizeConfig() {
     .map((x, i) => ({ id: String(x.id || 'c' + Date.now().toString(36) + i).slice(0, 40), name: String(x.name || '').slice(0, 60) || path.basename(x.target.trim()).replace(/\.exe$/i, ''), target: x.target.trim().slice(0, 500), on: x.on !== false }));
   { const d = parseFloat(String(c.goal.divines ?? '').replace(',', '.')); c.goal.divines = Number.isFinite(d) && d > 0 ? d : null; }
   if (!['s', 'm', 'l'].includes(c.overlay.size)) c.overlay.size = 'm';
+  // v0.6 Home is a new layout: an order from the old tile grid is replaced once by the new default.
+  if (c.layout.v !== 6) { c.layout.order = ['poe', 'wealthy', 'ninja', 'maps', 'pob', 'campaign', 'filter', 'overlay', 'apt', 'today']; c.layout.v = 6; }
   const order = (c.layout.order || []).filter(id => CARD_IDS.includes(id));
   for (const id of CARD_IDS) if (!order.includes(id)) order.push(id);
   c.layout.order = order;
@@ -339,6 +341,7 @@ function pathStatus() {
 function refreshPaths() { pathsCache = pathStatus(); }
 
 function snapshot() {
+  const ws = wealth ? wealth.summary(leagueStartMs()) : null;
   return {
     now: Date.now(),
     gameRunning, caughtUp, catchup, logMissing,
@@ -350,12 +353,15 @@ function snapshot() {
     stateCorrupt: leagueDb && leagueDb.corruptFile ? path.basename(leagueDb.corruptFile) : null,
     stats: tracker ? tracker.snapshot(Date.now()) : null,
     iconsRev: icons ? icons.rev : 0,
-    wealth: wealth ? { ...wealth.summary(leagueStartMs()), syncAt: wealthSyncAt, syncEvery: WEALTH_SYNC_MS, scriptSeenAt: weScriptSeenAt, bgSyncAt: weBgSyncAt, serverError: weServer && weServer.error } : null,
+    wealth: wealth ? { ...ws, history: wealthHistory(), syncAt: wealthSyncAt, syncEvery: WEALTH_SYNC_MS, scriptSeenAt: weScriptSeenAt, bgSyncAt: weBgSyncAt, serverError: weServer && weServer.error } : null,
     divRate: sessionDivRate(),
     breakPrompt,
     goal: goalInfo(),
+    prices: pricesInfo(ws),
+    apt: aptInfo(),
     pobBuild,
     today: todayStats(),
+    mostRun: mostRunLeague(),
   };
 }
 
@@ -365,7 +371,7 @@ const sentKey = new Map(); // webContents id -> data key last sent
 const hiddenWc = new Set(); // windows whose page reports it can't be seen (covered by the game, etc.)
 let lastIdleTick = 0;
 function statusKey() {
-  return JSON.stringify([gen, breakPrompt && breakPrompt.shownAt, ninja.cache && ninja.cache.at, config.data.goal, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [wealth.rev, wealth.lastError, wealthSyncAt, weBgSyncAt, Math.floor(weScriptSeenAt / 300000)] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, overlayUnlocked,
+  return JSON.stringify([gen, breakPrompt && breakPrompt.shownAt, ninja.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [wealth.rev, wealth.lastError, wealthSyncAt, weBgSyncAt, Math.floor(weScriptSeenAt / 300000)] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, overlayUnlocked,
     profileStatus, neversinkLatest, config.data.neversink, pathsCache, leagueDb && leagueDb.corruptFile]);
 }
 function broadcast() {
@@ -608,19 +614,93 @@ async function launchCompanions() {
   for (const t of list) {
     if (/^https:\/\//i.test(t)) { shell.openExternal(t); results.push({ target: t, ok: true }); continue; }
     if (running.has(path.basename(t).toLowerCase())) { results.push({ target: t, ok: true, skipped: 'running' }); continue; }
-    results.push({ target: t, ...(await launchExe(t)) });
+    const r = await launchExe(t);
+    if (r.ok && t === P.aptExe) { aptLaunchedAt = Date.now(); aptRunning = true; }
+    results.push({ target: t, ...r });
   }
   return results;
 }
 
-// ---------- goal & today ----------
+// ---------- goal, prices & today ----------
 const ninja = new NinjaPrice({ fetch, userAgent: `Exilogue/${app.getVersion()} (personal companion app)` });
 function goalInfo() {
   const g = config.data.goal;
   if (!g.name) return null;
   const live = ninja.get(config.data.league.name, g.name);
   const price = live && live.divines ? live.divines : g.divines;
-  return { name: g.name, price: price || null, source: live && live.divines ? 'ninja' : g.divines ? 'fixed' : null, at: live ? live.at : null };
+  return { name: g.name, art: goalArtId(g.name), price: price || null, source: live && live.divines ? 'ninja' : g.divines ? 'fixed' : null, at: live ? live.at : null, change: live ? live.change : null };
+}
+// Divine price and 24 h changes for the items in your latest export (only what poe.ninja data already loaded knows).
+function pricesInfo(w) {
+  const c = ninja.currency;
+  const changes = {};
+  for (const t of (w && w.top) || []) { const ch = ninja.change(t.name); if (ch != null) changes[t.name] = ch; }
+  return { divineChaos: c ? c.divineChaos : null, at: c ? c.at : null, changes };
+}
+// Net worth over the league for the Home chart: at most 40 points (one per export, thinned evenly).
+function wealthHistory() {
+  try { return wealth.history(leagueStartMs(), 40); } catch { return []; }
+}
+
+// The map (and tier) you ran most this league: a neutral fact, counted over all maps.
+function mostRunLeague() {
+  if (!tracker || !tracker.maps.length) return null;
+  const by = new Map();
+  for (const m of tracker.maps) { const k = `${m.zone || m.areaId}|${m.tier || 0}`; by.set(k, (by.get(k) || 0) + 1); }
+  let best = null;
+  for (const [k, n] of by) if (!best || n > best.runs) { const [zone, t] = k.split('|'); best = { zone, tier: Number(t) || null, runs: n }; }
+  return best;
+}
+
+// ---------- Awakened PoE Trade: running?, started by us when, its price-check key ----------
+let aptRunning = false, aptLaunchedAt = 0, aptKey = null, aptKeyReadAt = 0;
+async function checkApt() {
+  const exe = config.data.paths.aptExe;
+  if (!exe) { aptRunning = false; return; }
+  const running = (await runningImages()).has(path.basename(exe).toLowerCase());
+  if (running !== aptRunning) { aptRunning = running; if (!running) aptLaunchedAt = 0; }
+}
+// APT keeps its settings in %APPDATA%\awakened-poe-trade\apt-data\config.json; only the price-check key is read.
+function readAptKey() {
+  if (Date.now() - aptKeyReadAt < 10 * 60 * 1000) return aptKey;
+  aptKeyReadAt = Date.now();
+  try {
+    const f = path.join(app.getPath('appData'), 'awakened-poe-trade', 'apt-data', 'config.json');
+    const st = fs.statSync(f);
+    if (st.size > 2 * 1024 * 1024) return aptKey;
+    const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+    // APT keeps the modifier apart: priceCheckKeyHold ("Ctrl") + priceCheckKey ("D").
+    const k = j && j.priceCheckKey, hold = j && j.priceCheckKeyHold;
+    aptKey = typeof k === 'string' && k && k.length < 40 ? (typeof hold === 'string' && hold && hold.length < 20 ? `${hold} + ${k}` : k) : null;
+  } catch { aptKey = null; }
+  return aptKey;
+}
+function aptInfo() {
+  if (!config.data.paths.aptExe) return null;
+  return { running: aptRunning, launchedAt: aptLaunchedAt || null, key: readAptKey() };
+}
+
+// Map glyph file names: "Jungle Valley Map" → "JungleValley".
+const glyphName = zone => String(zone || '').replace(/ Map$/, '').replace(/[^A-Za-z]/g, '');
+// Icon ids are lowercase letters, digits and hyphens (they are also the file names in the icon cache).
+const goalArtId = name => 'goal-' + String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+const GLYPH = n => `https://web.poecdn.com/image/Art/2DItems/Maps/Atlas2Maps/New/${n}.png`;
+function iconExtras() {
+  const out = [];
+  const c = ninja.currency;
+  if (c && c.icons.divine) out.push({ id: 'cur-divine', url: c.icons.divine });
+  if (c && c.icons.chaos) out.push({ id: 'cur-chaos', url: c.icons.chaos });
+  const gname = config.data.goal.name;
+  // Only the art of the goal you have now (never the previous goal's picture next to a new name).
+  if (gname && ninja.cache && ninja.cache.icon && ninja.cache.key.endsWith('|' + gname.trim().toLowerCase())) out.push({ id: goalArtId(gname), url: ninja.cache.icon });
+  const names = new Set();
+  if (tracker) {
+    const cur = tracker.s.currentMap;
+    if (cur && cur.zone) names.add(glyphName(cur.zone));
+    for (let i = tracker.maps.length - 1; i >= 0 && names.size < 12; i--) names.add(glyphName(tracker.maps[i].zone || tracker.maps[i].areaId));
+  }
+  for (const n of names) if (n) out.push({ id: 'map-' + n.toLowerCase(), url: GLYPH(n) });
+  return out;
 }
 
 // "Today" starts at 05:00, so a night session past midnight still counts as the same day.
@@ -640,7 +720,16 @@ function todayStats() {
   const levels = evs.filter(e => e.type === 'level' && e.level != null && e.char === me);
   const breaks = evs.filter(e => e.type === 'break');
   const maps = tracker.maps.filter(m => m.end >= from);
-  const best = maps.reduce((b, m) => (!b || m.activeMs < b.activeMs ? m : b), null);
+  // Neutral facts only: which map you ran most, and which one killed you most (no "best": map speed is mostly luck).
+  const by = new Map();
+  for (const m of maps) {
+    const k = `${m.zone || m.areaId}|${m.tier || 0}`;
+    const g = by.get(k) || { zone: m.zone || m.areaId, tier: m.tier || null, runs: 0, deaths: 0 };
+    g.runs++; g.deaths += m.deaths || 0; by.set(k, g);
+  }
+  const groups = [...by.values()];
+  const mostRun = groups.reduce((b, g) => (!b || g.runs > b.runs ? g : b), null);
+  const deadliest = groups.filter(g => g.deaths).reduce((b, g) => (!b || g.deaths > b.deaths ? g : b), null);
   const first = evs[0] || (se && !se.ended ? { t: se.start } : null);
   return {
     from, firstAt: first ? Math.max(first.t, from) : null, sessions,
@@ -648,7 +737,7 @@ function todayStats() {
     breakMs: breaks.reduce((n, e) => n + (e.ms || 0), 0),
     newTiers: evs.filter(e => e.type === 'tier').length,
     maps: maps.length, deaths: evs.filter(e => e.type === 'death').length,
-    best: best && { zone: best.zone, areaId: best.areaId, tier: best.tier, activeMs: best.activeMs },
+    mostRun, deadliest,
   };
 }
 
@@ -858,7 +947,7 @@ function setupIpc() {
       if (r.ok) launchCompanions().catch(() => {}); // the game first; tools follow without holding it up
       return r;
     }
-    if (which === 'apt') return launchExe(P.aptExe);
+    if (which === 'apt') { const r = await launchExe(P.aptExe); if (r.ok) { aptLaunchedAt = Date.now(); aptRunning = true; } return r; }
     if (which === 'pob') return launchExe(P.pobExe);
     const c = config.data.launch.custom.find(x => x.id === which);
     if (c) { if (/^https:\/\//i.test(c.target)) { shell.openExternal(c.target); return { ok: true }; } return launchExe(c.target); }
@@ -968,7 +1057,13 @@ app.whenReady().then(() => {
   });
   setInterval(broadcast, 1000);
   setInterval(breakTick, 2000);
-  setInterval(goalInfo, 5 * 60 * 1000); // keeps the poe.ninja price fresh (it refreshes at most hourly)
+  // Is Awakened PoE Trade running? Once a minute, only while the dashboard can be seen (one tasklist call).
+  setInterval(() => { if (dashWin && dashWin.isVisible() && !dashWin.isMinimized()) checkApt().catch(() => {}); }, 60 * 1000);
+  setTimeout(() => checkApt().catch(() => {}), 4000);
+  // poe.ninja: divine price and icons for everyone, goal price when a goal is set (each refreshes at most hourly).
+  const ninjaTick = () => ninja.refresh(config.data.league.name, config.data.goal.name).catch(() => {});
+  setTimeout(ninjaTick, 3000);
+  setInterval(ninjaTick, 5 * 60 * 1000);
   setInterval(() => flushLeague({ force: false }), FLUSH_MS);
   icons = new IconStore({
     dir: path.join(dir, 'icons'),
@@ -985,7 +1080,10 @@ app.whenReady().then(() => {
     onChange: () => {},
   });
   // Cheap when nothing is due (no network, no writes); fetches only what is missing or older than 30 days.
-  const refreshIcons = () => icons.refresh({ poeExe: config.data.paths.poeExe, pobExe: config.data.paths.pobExe, aptExe: config.data.paths.aptExe, mapName: bestMapName() }).catch(() => {});
+  const refreshIcons = () => icons.refresh({ poeExe: config.data.paths.poeExe, pobExe: config.data.paths.pobExe, aptExe: config.data.paths.aptExe, mapName: bestMapName(), extra: iconExtras() }).catch(() => {});
+  // New art to fetch (a new map in the recent list, poe.ninja icons that just arrived): checked every minute, fetched once.
+  let extrasSeen = '';
+  setInterval(() => { const sig = JSON.stringify(iconExtras()); if (sig !== extrasSeen) { extrasSeen = sig; refreshIcons(); } }, 60 * 1000);
   setTimeout(refreshIcons, 5000);
   setInterval(refreshIcons, 10 * 60 * 1000);
   iconRefresh = refreshIcons;

@@ -30,7 +30,14 @@ const unxml = s => s == null ? null : s.replace(/&quot;/g, '"').replace(/&apos;/
 function parseBuild(xml) {
   const b = (xml.match(/<Build\b[^>]*>/) || [])[0];
   if (!b) return null;
-  const out = { level: Number(attr(b, 'level')) || null, cls: unxml(attr(b, 'className')), asc: unxml(attr(b, 'ascendClassName')), skill: null };
+  const out = { level: Number(attr(b, 'level')) || null, cls: unxml(attr(b, 'className')), asc: unxml(attr(b, 'ascendClassName')), skill: null, stats: {} };
+  // The numbers PoB itself shows in its sidebar, saved in the build as <PlayerStat stat="…" value="…"/>.
+  const WANT = ['CombinedDPS', 'TotalDPS', 'FullDPS', 'Life', 'EnergyShield', 'Mana', 'Evasion', 'Armour', 'EffectiveSpellSuppressionChance', 'SpellSuppressionChance',
+    'BlockChance', 'FireResist', 'ColdResist', 'LightningResist', 'ChaosResist', 'TotalEHP'];
+  for (const t of xml.match(/<PlayerStat\b[^>]*>/g) || []) {
+    const k = attr(t, 'stat'), v = Number(attr(t, 'value'));
+    if (WANT.includes(k) && Number.isFinite(v)) out.stats[k] = v;
+  }
   if (out.asc === 'None') out.asc = null;
   const main = Number(attr(b, 'mainSocketGroup')) || 1;
   const skillsBlock = (xml.match(/<Skills\b[\s\S]*?<\/Skills>/) || [])[0] || '';

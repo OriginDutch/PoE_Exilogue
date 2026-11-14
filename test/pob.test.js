@@ -9,7 +9,7 @@ const XML = `<?xml version="1.0"?><PathOfBuilding><Build level="92" className="S
 <Skill><Gem nameSpec="Efficacy" skillId="SupportEfficacy"/><Gem nameSpec="Essence Drain" skillId="EssenceDrain"/></Skill></SkillSet></Skills></PathOfBuilding>`;
 
 test('pob: parses class, ascendancy, level and the main skill', () => {
-  assert.deepEqual(parseBuild(XML), { level: 92, cls: 'Shadow', asc: 'Trickster', skill: 'Essence Drain' });
+  assert.deepEqual(parseBuild(XML), { level: 92, cls: 'Shadow', asc: 'Trickster', skill: 'Essence Drain', stats: {} });
 });
 
 test('pob: picks the newest build, also in subfolders', () => {
@@ -23,4 +23,13 @@ test('pob: picks the newest build, also in subfolders', () => {
   assert.equal(b.name, 'ED Trickster');
   assert.equal(b.skill, 'Essence Drain');
   assert.equal(lastBuild(path.join(dir, 'missing')), null);
+});
+
+test('pob: reads the sidebar stats PoB saves in the build', () => {
+  const xml = XML.replace('</Build>', '<PlayerStat stat="CombinedDPS" value="2412345.6"/><PlayerStat stat="Life" value="4850"/><PlayerStat stat="FireResist" value="76"/><PlayerStat stat="ChaosResist" value="-12"/><PlayerStat stat="Junk" value="1"/></Build>');
+  const b = parseBuild(xml);
+  assert.equal(b.stats.CombinedDPS, 2412345.6);
+  assert.equal(b.stats.Life, 4850);
+  assert.equal(b.stats.ChaosResist, -12);
+  assert.equal(b.stats.Junk, undefined);
 });

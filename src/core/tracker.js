@@ -392,7 +392,7 @@ class Tracker {
       }
       if (cls.tier != null && (s.highestTier == null || cls.tier > s.highestTier)) s.highestTier = cls.tier;
       s.currentMap = { areaId: ev.areaId, zone: null, level: ev.areaLevel, tier: cls.tier ?? null,
-                       seed: ev.seed, start: ev.t, activeMs: 0, deaths: 0 };
+                       seed: ev.seed, start: ev.t, activeMs: 0, deaths: 0, char: (s.character && s.character.name) || null };
     }
   }
 

@@ -24,13 +24,16 @@ window.__SNAP = %s; window.__CFG = %s;
 if (window.__ICONS) window.__SNAP.icons = window.__ICONS;
 if (window.__WEALTH) window.__SNAP.wealth = window.__WEALTH;
 if (window.__SNAP.stats) { const n = window.__SNAP.now;
-  window.__SNAP.wealth = window.__SNAP.wealth || {count:3, at: n-12*60e3, chaos:58350, divPrice:909, divines:64.2, delta:2900, prevAt: n-3*3600e3, top:[{name:'Divine Orb',qty:42,total:38157},{name:'Headhunter',qty:1,total:12000},{name:'Orb of Chance',qty:3048,total:4755}], error:null, syncAt: n-20*60e3, syncEvery: 300000};
-  window.__SNAP.pobBuild = {name:'ED Trickster 3.30', file:'C:\\Users\\you\\Documents\\Path of Building\\Builds\\ED Trickster 3.30.xml', mtime:n-14*3600e3, level:92, cls:'Shadow', asc:'Trickster', skill:'Essence Drain'};
+  window.__SNAP.wealth = window.__SNAP.wealth || {history:[41,43,42,47,49,48,53,55,54,58,61,60,64.2].map((d,i)=>({t:n-(13-i)*3600e3, divines:d})), count:3, at: n-12*60e3, chaos:58350, divPrice:909, divines:64.2, delta:2900, prevAt: n-3*3600e3, top:[{name:'Divine Orb',qty:42,total:38157},{name:'Headhunter',qty:1,total:12000},{name:'Orb of Chance',qty:3048,total:4755}], error:null, syncAt: n-20*60e3, syncEvery: 300000};
+  window.__SNAP.pobBuild = {name:'ED Trickster 3.30', file:'C:\\Users\\you\\Documents\\Path of Building\\Builds\\ED Trickster 3.30.xml', mtime:n-14*3600e3, level:92, cls:'Shadow', asc:'Trickster', skill:'Essence Drain', stats:{CombinedDPS:2412000, Life:4850, EnergyShield:2100, Evasion:6800, EffectiveSpellSuppressionChance:100, FireResist:76, ColdResist:76, LightningResist:75, ChaosResist:-12}};
+  window.__SNAP.apt = {running:true, launchedAt:n-593*60e3, key:'Ctrl + D'};
+  window.__SNAP.prices = {divineChaos:95.7, at:n, changes:{'Headhunter':8.2, 'Orb of Chance':-3.1}};
   window.__SNAP.paths.aptExe = true;
   if (window.__SNAP.neversink && window.__SNAP.neversink.latest) window.__SNAP.neversink.latest.notes = ['Currency tiers rebalanced for 3.30','Added styles for the new Coven items','Omens moved to their own tier list','Fixed Divination Card colours','Strictness levels retuned'];
   window.__SNAP.divRate = window.__SNAP.divRate || {divines: 1.3, perHour: 0.41};
-  window.__SNAP.goal = window.__SNAP.goal || {name:'Mageblood', price:149, source:'ninja', at:n};
-  window.__SNAP.today = window.__SNAP.today || {from:n-8*3600e3, firstAt:n-4*3600e3, sessions:2, levelFrom:83, levelTo:86, breakMs:24*60e3, newTiers:2, maps:23, deaths:3, best:{zone:'Strand Map', tier:14, activeMs:252000}};
+  window.__SNAP.goal = window.__SNAP.goal || {name:'Mageblood', art:'goal-mageblood', price:107, source:'ninja', at:n, change:-2};
+  window.__SNAP.mostRun = {zone:'Strand Map', tier:14, runs:11};
+  window.__SNAP.today = window.__SNAP.today || {from:n-8*3600e3, firstAt:n-4*3600e3, sessions:2, levelFrom:83, levelTo:86, breakMs:24*60e3, newTiers:2, maps:23, deaths:3, mostRun:{zone:'Strand Map', tier:14, runs:5}, deadliest:{zone:'Tower Map', tier:13, deaths:2}};
   if (window.__SNAP.stats.session) Object.assign(window.__SNAP.stats.session, {breaks:2, breakMs:24*60e3, lastBreakEnd:n-41*60e3});
   window.__SNAP.stats.lastSession = window.__SNAP.stats.lastSession || {start:n-30*3600e3, end:n-25*3600e3, playedMs:5*3600e3, maps:31, deaths:4, levelFrom:80, levelTo:83, breaks:3, breakMs:30*60e3, wealthDiv:1.4, divPerHour:0.29};
 }
@@ -90,12 +93,12 @@ with sync_playwright() as p:
         pg = b.new_page(viewport={'width': w, 'height': h})
         errs = []
         pg.on('pageerror', lambda e: errs.append(str(e)))
-        pre = ''
+        pre = 'window.__ICONS = ' + open(root/'tools/demo-icons.json').read() + ';\n'
         if name.startswith('27-'):
             pre = "window.__WEALTH = {count:3, at: Date.now()-12*60e3, chaos:196944, divPrice:909, divines:196944/909, delta:12400, prevAt: Date.now()-3*3600e3, top:[{name:'Mageblood',qty:1,total:135285},{name:'Divine Orb',qty:42,total:38157},{name:'Orb of Chance',qty:3048,total:4755}], error:null};\n"
         if name.startswith('26-'):
             ph = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><pattern id='h' width='6' height='6' patternUnits='userSpaceOnUse' patternTransform='rotate(45)'><rect width='3' height='6' fill='%23889'/></pattern></defs><rect x='4' y='4' width='56' height='56' rx='12' fill='url(%23h)' stroke='%23aab' stroke-width='2'/><text x='32' y='37' font-size='11' text-anchor='middle' fill='%23fff' font-family='sans-serif'>ICON</text></svg>"
-            pre = "window.__ICONS = { filter: \"data:image/svg+xml;utf8," + ph + "\" };\n"
+            pre += "window.__ICONS.filter = \"data:image/svg+xml;utf8," + ph + "\";\n"
         pg.add_init_script(pre + (stub % (snap(scen), json.dumps(cfg(**kw)))))
         pg.goto((root/'src/renderer/index.html').as_uri() + '#' + view)
         pg.wait_for_timeout(500)

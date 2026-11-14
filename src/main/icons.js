@@ -91,7 +91,7 @@ class IconStore {
       const raw = JSON.parse(fs.readFileSync(this.indexFile, 'utf8'));
       if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
         for (const [id, e] of Object.entries(raw)) {
-          if (e && typeof e === 'object' && typeof e.key === 'string' && typeof e.file === 'string' && /^[a-z]+\.(png|jpg|gif|webp|ico)$/.test(e.file)) this.index[id] = e;
+          if (e && typeof e === 'object' && typeof e.key === 'string' && typeof e.file === 'string' && /^[a-z0-9-]{1,64}\.(png|jpg|gif|webp|ico)$/.test(e.file)) this.index[id] = e;
         }
       }
     } catch { /* none yet, or unreadable: refetched */ }
@@ -238,6 +238,17 @@ class IconStore {
       if (ctx.aptExe) changed = (await this._exe('apt', ctx.aptExe)) || changed;
       for (const [id, url] of Object.entries(SITES)) changed = (await this._site(id, url)) || changed;
       for (const [id, url] of Object.entries(ART)) changed = (await this._url(id, [url])) || changed;
+      // Extra art the app asks for: currency and goal icons from poe.ninja, map glyphs for recent maps.
+      for (const x of ctx.extra || []) {
+        if (!x || !/^[a-z0-9-]{1,60}$/.test(x.id) || typeof x.url !== 'string' || !/^https:\/\/web\.poecdn\.com\//.test(x.url)) continue;
+        changed = (await this._url(x.id, [x.url])) || changed;
+      }
+      // Map glyphs and goal art pile up as you play other maps or change goals: keep the newest 40, delete the rest.
+      const extra = Object.entries(this.index).filter(([id]) => /^(map|goal)-/.test(id)).sort((a, b) => (b[1].at || 0) - (a[1].at || 0));
+      for (const [id, e] of extra.slice(40)) {
+        try { fs.unlinkSync(path.join(this.dir, e.file)); } catch { /* gone */ }
+        delete this.index[id]; this.dirty = true; changed = true;
+      }
       const map = ctx.mapName || MAP_FALLBACK;
       const urls = [GGG(`Art/2DItems/Maps/Atlas2Maps/New/${map}`)];
       if (map !== MAP_FALLBACK) urls.push(GGG(`Art/2DItems/Maps/Atlas2Maps/New/${MAP_FALLBACK}`));

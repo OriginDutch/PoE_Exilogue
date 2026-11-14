@@ -172,8 +172,8 @@
     edit: () => { ui.editing = true; currentKey = null; render(); },
     'edit-done': () => { ui.editing = false; currentKey = null; render(); },
     'layout-reset': async () => {
-      if (await E.confirm({ title: 'Reset layout?', body: 'All cards go back to their default order and size, and hidden cards come back.', ok: 'Reset' })) {
-        await save({ _replaceLayout: true, layout: { order: Object.keys(E.CARDS), sizes: { poe: 'xl' }, hidden: {} } });
+      if (await E.confirm({ title: 'Reset layout?', body: 'All tiles go back to their default order, and hidden tiles come back.', ok: 'Reset' })) {
+        await save({ _replaceLayout: true, layout: { order: E.TILE_ORDER.slice(), sizes: {}, hidden: {}, v: 6 } });
       }
     },
     hide: el => save({ layout: { hidden: { [el.dataset.id]: !state.cfg.layout.hidden[el.dataset.id] } } }),
