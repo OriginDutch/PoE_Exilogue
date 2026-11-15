@@ -430,3 +430,18 @@ html.no-motion .view{animation:none}
 .toast.out{opacity:0;transform:translateY(6px);transition:opacity .2s,transform .2s}
 @keyframes toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.toast{animation:none}.toast.out{transition:none}}
+
+/* goal picker */
+.dialog.gp{width:min(560px,100%);max-height:min(640px,calc(100vh - 48px))}
+.gp-list{list-style:none;margin:0;padding:0;overflow:auto;min-height:0;flex:1;max-height:340px;border:1px solid var(--line);border-radius:8px}
+.gp-list:empty{display:none}
+.gp-list li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--line)}
+.gp-list li:last-child{border-bottom:0}
+.gp-list li[aria-selected="true"]{background:var(--hover);box-shadow:inset 3px 0 0 var(--acc)}
+.gp-list li:hover{background:var(--hover)}
+.gp-n{display:flex;flex-direction:column;gap:2px;min-width:0}
+.gp-n b{font-weight:600;font-size:14px}
+.gp-p{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.gp-st{white-space:normal}
+.goal-btn{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left;letter-spacing:inherit;text-transform:inherit;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.goal-btn:hover,.goal-btn:focus-visible{color:var(--tx);text-decoration:underline;text-underline-offset:3px}

@@ -94,7 +94,7 @@
   function ninja({ snap }) {
     const g = snap.goal, w = snap.wealth, p = snap.prices || {};
     let goal;
-    if (!g) goal = `<div class="sub">No goal set. <button class="lnk" data-nav="settings:league">Pick an item to save for</button></div>`;
+    if (!g) goal = `<div class="sub">No goal set. <button class="lnk" data-act="goal-pick">Pick an item to save for</button></div>`;
     else if (!g.price) goal = `<div class="sub">No price for ${esc(g.name)} yet. <button class="lnk" data-nav="settings:league">Set a fixed price</button></div>`;
     else {
       const have = w && w.divines != null ? w.divines : null, pct = have != null ? Math.max(0, Math.min(100, 100 * have / g.price)) : null;
@@ -106,7 +106,7 @@
     }
     const changes = Object.entries(p.changes || {}).slice(0, 3).map(([n, c]) => kv(esc(n), `${c >= 0 ? '▲' : '▼'} ${num(Math.abs(c), 0)}%`, c >= 0 ? 'ok' : 'bad')).join('');
     return `${head('ninja', 'poe.ninja', 'Prices · ' + esc(EX.state.cfg.league.name), `<button class="btn i sm" data-url="https://poe.ninja/" aria-label="Open poe.ninja">${ic.ext()}</button>`, false)}
-      <div><div class="row between"><span class="lbl row" style="gap:8px">${g && g.source === 'ninja' && g.art ? art(g.art, 'item') : ''}Goal${g ? ' · ' + esc(g.name) : ''}</span><span class="sub">${g && g.price ? (g.source === 'ninja' ? num(g.price) + ' div' : 'fixed ' + num(g.price) + ' div') : ''}</span></div>${goal}</div>
+      <div><div class="row between" style="gap:10px"><span class="lbl row" style="gap:8px;min-width:0;flex:1">${g && g.source === 'ninja' && g.art ? art(g.art, 'item') : ''}${g ? `<button class="goal-btn" data-act="goal-pick" title="${esc(g.name)}${g.label ? ' · ' + esc(g.label) : ''} (click to change)" aria-label="Goal: ${esc(g.name)}${g.label ? ', ' + esc(g.label) : ''}. Change goal">Goal · ${esc(g.name)}${g.label ? ' · ' + esc(g.label) : ''}</button>` : 'Goal'}</span><span class="sub" style="flex:none">${g && g.price ? (g.source === 'ninja' ? (g.approx ? '≈ ' : '') + num(g.price) + ' div' : 'fixed ' + num(g.price) + ' div') : ''}</span></div>${goal}</div>
       <div class="dlist">${p.divineChaos ? `<div><span class="row" style="gap:6px">${art('cur-divine', 'cur')}Divine Orb</span><b class="row" style="gap:4px">${num(p.divineChaos, 0)}${art('cur-chaos', 'cur')}${E.iconOf('cur-chaos') ? '' : 'c'}</b></div>` : '<div><span>Divine Orb</span><b class="dim">no price yet</b></div>'}</div>
       ${changes ? `<div><div class="lbl" style="margin-bottom:2px">Your items, 24 h</div><div class="dlist">${changes}</div></div>` : ''}`;
   }

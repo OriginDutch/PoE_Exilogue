@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Exilogue – Wealthy Exile auto export
 // @namespace    exilogue
-// @version      1.6
+// @version      1.8
 // @description  After a sync on Wealthy Exile (yours, started from Exilogue's tile, or Exilogue's background sync while you play), waits until it is done and clicks ··· › Export CSV. Exilogue picks the file up from Downloads.
 // @match        https://wealthyexile.com/*
 // @match        https://www.wealthyexile.com/*
@@ -19,7 +19,7 @@
   try {
     if (location.hash === '#' + MARK) { sessionStorage.setItem(MARK, String(Date.now())); history.replaceState(null, '', location.pathname + location.search); }
   } catch { /* storage blocked */ }
-  console.log('[Exilogue] userscript v1.6 loaded on', location.href, (() => { try { return sessionStorage.getItem(MARK) ? '(sync marker found)' : ''; } catch { return ''; } })());
+  console.log('[Exilogue] userscript v1.8 loaded on', location.href, (() => { try { return sessionStorage.getItem(MARK) ? '(sync marker found)' : ''; } catch { return ''; } })());
   // Wealthy Exile is built with Mantine (Nov 2026 markup):
   //  - "···" button: <button aria-label="more …"> with <svg class="tabler-icon-dots">
   //  - its menu: <a download="Wealthy-Exile-export-…" href="blob:…"><button role="menuitem">… Export CSV</button></a>
@@ -145,19 +145,22 @@
     btn.click();
     return exportAfterSync(btn, true);
   }
-  // Background sync: once a minute, ask Exilogue (on this PC only) whether now is a good moment.
-  // It says yes at most every 30 minutes, between maps, while the game runs. Exilogue not running = no answer = nothing happens.
+  // Every 10 s, ask Exilogue (on this PC only) whether to sync now: right after you pressed its tile button, or in the
+  // background about every 30 minutes while you play. Exilogue not running = no answer = nothing happens.
+  // Tells Exilogue a go couldn't be done, so it can undo exactly that one (and back off when it was a background sync).
+  const reportFailed = id => GM_xmlhttpRequest({ method: 'GET', url: 'http://127.0.0.1:47615/we-sync/failed' + (id ? '?id=' + id : ''), headers: { 'X-Exilogue': '1' } });
   function askExilogue() {
-    if (busy || typeof GM_xmlhttpRequest !== 'function') return;
+    if (typeof GM_xmlhttpRequest !== 'function') return;
     const wasFirst = first; first = false;
+    // Also ask while busy (busy=1): then Exilogue knows a sync is already running and hands out nothing.
     GM_xmlhttpRequest({
-      method: 'GET', url: 'http://127.0.0.1:47615/we-sync', timeout: 5000, headers: { 'X-Exilogue': '1' },
+      method: 'GET', url: 'http://127.0.0.1:47615/we-sync' + (busy ? '?busy=1' : ''), timeout: 5000, headers: { 'X-Exilogue': '1' },
       onload: r => {
-        let go = false;
-        try { go = JSON.parse(r.responseText).go === true; } catch { /* not Exilogue */ }
-        if (go && !busy) {
-          syncFromExilogue('asked Exilogue').then(ok => { if (!ok) GM_xmlhttpRequest({ method: 'GET', url: 'http://127.0.0.1:47615/we-sync/failed', headers: { 'X-Exilogue': '1' } }); });
-        }
+        let a = {};
+        try { a = JSON.parse(r.responseText) || {}; } catch { /* not Exilogue */ }
+        if (a.go !== true) return;
+        if (busy) { log('go from Exilogue while already busy, handing it back'); reportFailed(a.id); return; }
+        syncFromExilogue('asked Exilogue').then(ok => { if (!ok) reportFailed(a.id); });
       },
       onerror: () => { if (wasFirst) log('Exilogue not reachable on 127.0.0.1:47615 (not running?)'); },
       ontimeout: () => { if (wasFirst) log('Exilogue did not answer in time'); },
@@ -171,7 +174,7 @@
     if (at && Date.now() - at < 120000) syncFromExilogue('#marker');
     // Ask right away: a sync started from Exilogue's tile is waiting there (the #marker gets lost in WE's redirect).
     setTimeout(askExilogue, 800);
-    setInterval(askExilogue, 60 * 1000);
+    setInterval(askExilogue, 10 * 1000);
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
 

@@ -66,7 +66,10 @@
             ${profileLine(snap.profileStatus)}</div></div></section>
       <section class="setrow"><div><h2>Goal</h2><p>An item you save for. Home shows how far your Wealthy Exile value is, with the live poe.ninja price.</p></div>
         <div style="display:flex;flex-direction:column;gap:14px">
-          <div class="field"><label class="lbl" for="gl-name">Item</label><input id="gl-name" class="input" data-path="goal.name" value="${E.esc(cfg.goal.name)}" placeholder="Mageblood"><span class="sub">Exact unique name. Leave empty to hide the goal.</span></div>
+          <div class="field"><span class="lbl" id="gl-l">Item</span>
+            <div class="row" style="gap:8px;align-items:center"><span class="grow">${cfg.goal.name ? `<b>${E.esc(cfg.goal.name)}</b>${cfg.goal.label ? ` <span class="muted">· ${E.esc(cfg.goal.label)}</span>` : ''}` : '<span class="muted">No goal</span>'}</span>
+              <button class="btn" data-act="goal-pick" aria-label="${cfg.goal.name ? `Change goal (now ${E.esc(cfg.goal.name)}${cfg.goal.label ? ', ' + E.esc(cfg.goal.label) : ''})` : 'Pick a goal item'}">${cfg.goal.name ? 'Change' : 'Pick an item'}</button></div>
+            <span class="sub">Search any unique; variants, 6-links and relics each have their own price.</span></div>
           <div class="field"><label class="lbl" for="gl-div">Fixed price in divines (fallback)</label><input id="gl-div" class="input" data-path="goal.divines" inputmode="decimal" value="${cfg.goal.divines != null ? cfg.goal.divines : ''}" placeholder="Only used when poe.ninja has no price">
             ${snap.goal ? `<span class="sub">${snap.goal.source === 'ninja' ? `poe.ninja: ${snap.goal.price} div` : snap.goal.source === 'fixed' ? 'Using your fixed price (no poe.ninja price found yet)' : 'No price yet'}</span>` : ''}</div></div></section>
       <section class="setrow"><div><h2>Rebuild league data</h2><p>Reads Client.txt again from the league start. Your current stats are kept as a backup first.</p></div>
@@ -95,7 +98,7 @@
           <div class="field"><label class="lbl" for="lc-name">Name</label><input id="lc-name" class="input" data-lnew="name" value="${E.esc(ui.lnewName || '')}" placeholder="Optional"></div>
           <div class="field"><label class="lbl" for="lc-target">Program or link</label><div class="row" style="gap:8px"><input id="lc-target" class="input" data-lnew="target" value="${E.esc(ui.lnewTarget || '')}" placeholder="C:\\…\\Tool.exe or https://…"><button class="btn" data-act="launch-browse">${ic.folder()} Browse</button></div></div>
           <div><button class="btn p" data-act="launch-add">Add</button></div></div></section>
-      <section class="setrow" style="border-bottom:0"><div><h2>Wealthy Exile in the background</h2><p>While you play, Exilogue lets the userscript sync and export about every ${cfg.weSync.everyMin} minutes, right after you leave a map. Only works when a Wealthy Exile tab is open in Firefox.</p></div>
+      <section class="setrow" style="border-bottom:0"><div><h2>Wealthy Exile in the background</h2><p>While you play, Exilogue lets the userscript sync and export about every ${cfg.weSync.everyMin} minutes, in a map or out of one. Not while you're away from the PC. Only works when a Wealthy Exile tab is open in Firefox; with one open, the tile button syncs there instead of opening a new tab.</p></div>
         <div style="display:flex;flex-direction:column;gap:12px">
           <div class="row between"><span>Sync in the background</span>${E.sw(cfg.weSync.background, 'Sync Wealthy Exile in the background', 'wesync-toggle')}</div>
           <div class="row between"><span class="muted">At most every</span><select class="select" style="width:auto" data-weevery>${[15, 30, 45, 60, 90].map(m => `<option value="${m}" ${cfg.weSync.everyMin === m ? 'selected' : ''}>${m} min</option>`).join('')}</select></div>

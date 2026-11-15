@@ -8,7 +8,7 @@ const { JsonStore, deepMerge } = require('./store');
 const { LeagueDb, checkFile } = require('./db');
 const { IconStore } = require('./icons');
 const { Wealth } = require('./wealth');
-const { NinjaPrice } = require('./ninja');
+const { NinjaPrice, ITEM_TYPES: NINJA_TYPES } = require('./ninja');
 const { shouldSync, WeSyncServer } = require('./wesync');
 const { lastBuild } = require('./pob');
 const { LogWatcher } = require('./logwatcher');
@@ -46,7 +46,7 @@ const DEFAULT_CONFIG = {
   // "Take a break?": asked after `everyMin` of play, ~10 s after leaving a map (or entering a town in the campaign).
   breaks: { enabled: true, campaign: true, everyMin: 60 },
   // Home goal: an item to save for. Price from poe.ninja; `divines` is the fixed fallback when it isn't found.
-  goal: { name: 'Mageblood', divines: null },
+  goal: { name: 'Mageblood', id: null, type: null, label: '', divines: null },
   ui: {
     theme: 'system',      // system | dark | light
     darkPalette: 'night', // night | spectral | silver
@@ -98,6 +98,10 @@ function sanitizeConfig() {
   c.ui.lightPalette = 'paper';
   c.breaks.everyMin = Math.min(240, Math.max(15, Math.round(Number(c.breaks.everyMin) || 60)));
   c.goal.name = String(c.goal.name || '').slice(0, 80);
+  // Picked in the goal search: poe.ninja's id of that exact line (variant, links, relic), its category and a short label.
+  c.goal.id = c.goal.name && typeof c.goal.id === 'string' && /^[a-z0-9-]{1,120}$/.test(c.goal.id) ? c.goal.id : null;
+  c.goal.type = c.goal.id && NINJA_TYPES.includes(c.goal.type) ? c.goal.type : null;
+  c.goal.label = c.goal.id ? String(c.goal.label || '').slice(0, 80) : '';
   c.weSync.everyMin = Math.min(180, Math.max(15, Math.round(Number(c.weSync.everyMin) || 30)));
   c.launch.custom = (Array.isArray(c.launch.custom) ? c.launch.custom : []).filter(x => x && typeof x.target === 'string' && x.target.trim()).slice(0, 20)
     .map((x, i) => ({ id: String(x.id || 'c' + Date.now().toString(36) + i).slice(0, 40), name: String(x.name || '').slice(0, 60) || path.basename(x.target.trim()).replace(/\.exe$/i, ''), target: x.target.trim().slice(0, 500), on: x.on !== false }));
@@ -355,7 +359,7 @@ function snapshot() {
     stateCorrupt: leagueDb && leagueDb.corruptFile ? path.basename(leagueDb.corruptFile) : null,
     stats: tracker ? tracker.snapshot(Date.now()) : null,
     iconsRev: icons ? icons.rev : 0,
-    wealth: wealth ? { ...ws, history: wealthHistory(), syncAt: wealthSyncAt, syncEvery: WEALTH_SYNC_MS, scriptSeenAt: weScriptSeenAt, bgSyncAt: weBgSyncAt, serverError: weServer && weServer.error } : null,
+    wealth: wealth ? { ...ws, history: wealthHistory(), syncAt: wealthSyncAt, syncEvery: WEALTH_SYNC_MS, manualExpiredAt: weManualExpiredAt, failAt: weFailAt, scriptSeenAt: weScriptSeenAt, bgSyncAt: weBgSyncAt, serverError: weServer && weServer.error } : null,
     divRate: sessionDivRate(),
     breakPrompt,
     goal: goalInfo(),
@@ -374,7 +378,7 @@ const sentKey = new Map(); // webContents id -> data key last sent
 const hiddenWc = new Set(); // windows whose page reports it can't be seen (covered by the game, etc.)
 let lastIdleTick = 0;
 function statusKey() {
-  return JSON.stringify([gen, updateState, breakPrompt && breakPrompt.shownAt, ninja.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [wealth.rev, wealth.lastError, wealthSyncAt, weBgSyncAt, Math.floor(weScriptSeenAt / 300000)] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, overlayUnlocked,
+  return JSON.stringify([gen, updateState, breakPrompt && breakPrompt.shownAt, ninja.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [(weManualTick(), wealth.rev), wealth.lastError, wealthSyncAt, weBgSyncAt, weManualExpiredAt, weFailAt, Math.floor(weScriptSeenAt / 300000)] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, overlayUnlocked,
     profileStatus, neversinkLatest, config.data.neversink, pathsCache, leagueDb && leagueDb.corruptFile]);
 }
 function broadcast() {
@@ -576,26 +580,59 @@ function annotateSessions() {
 }
 
 // ---------- background Wealthy Exile sync ----------
-let weServer = null, weScriptSeenAt = 0, weBgSyncAt = 0, weBgPrev = 0; // weBgPrev: put back when the script reports it couldn't sync
+let weServer = null, weScriptSeenAt = 0, weBgSyncAt = 0;
 // Tile button: the request waits here until the userscript asks (WE redirects / to /stash and drops the #marker,
-// so the URL can't carry it). Handed out once, valid for 2 minutes.
-let weManualAt = 0, weLastGo = null; // weLastGo: 'manual' | 'bg', so /failed knows what to undo
-const WE_MANUAL_MS = 2 * 60 * 1000;
-function weDecide() {
-  if (weManualAt && Date.now() - weManualAt < WE_MANUAL_MS) { weManualAt = 0; weLastGo = 'manual'; return true; }
-  weManualAt = 0;
+// so the URL can't carry it). Handed out once. Valid 45 s when an open tab should pick it up, 2 min for a new tab.
+let weManualAt = 0, weManualTtl = 0, weManualExpiredAt = 0, weForceTab = false, weFailAt = 0;
+// Every "go" gets an id; /we-sync/failed?id=… undoes exactly that one (several WE tabs can be open).
+const weGos = new Map(); let weGoSeq = 0;
+// Background syncs that fail back off: 5, 10, 20, 40 min … up to the normal interval. Reset once an export arrives.
+let weBgFails = 0, weBgFailAt = 0;
+function weManualTick(now = Date.now()) {
+  if (weManualAt && now - weManualAt > weManualTtl) {
+    weManualAt = 0; wealthSyncAt = 0; // nobody picked it up: unlock the button, next press opens a new tab
+    weManualExpiredAt = now; weForceTab = true;
+  }
+}
+function weGo(kind, extra) {
+  const id = ++weGoSeq;
+  weGos.set(id, { kind, at: Date.now(), ...extra });
+  for (const [k, g] of weGos) if (Date.now() - g.at > 10 * 60e3) weGos.delete(k);
+  return { go: true, id };
+}
+function weDecide({ busy } = {}) {
+  const now = Date.now();
+  weManualTick(now);
+  // A tab that is already syncing does what the button asked for: count the request as picked up.
+  if (busy) { if (weManualAt) weManualAt = 0; return { go: false }; }
+  if (weManualAt) { weManualAt = 0; return weGo('manual'); }
+  if (!wealth) return { go: false };
+  const lastExport = wealth.latestAt() || 0;
+  if (weBgFails && lastExport > weBgFailAt) weBgFails = 0;
   const b = config.data.weSync;
-  const go = !!wealth && caughtUp && shouldSync({
-    enabled: b.background, everyMin: b.everyMin, gameRunning, now: Date.now(),
+  const go = caughtUp && shouldSync({
+    enabled: b.background, everyMin: b.everyMin, gameRunning, now,
     idleMs: powerMonitor.getSystemIdleTime() * 1000,
-    area: tracker && tracker.s.area,
-    lastSyncAt: Math.max(wealthSyncAt, weBgSyncAt), lastExportAt: wealth.latestAt(),
+    lastSyncAt: Math.max(wealthSyncAt, weBgSyncAt), lastExportAt: lastExport,
   });
-  if (go) { weBgPrev = weBgSyncAt; weBgSyncAt = Date.now(); weLastGo = 'bg'; }
-  return go;
+  if (!go) return { go: false };
+  weBgSyncAt = now;
+  return weGo('bg');
+}
+function weFailed(id) {
+  let g = id ? weGos.get(id) : null;
+  if (!id) { const last = [...weGos.keys()].pop(); g = last ? weGos.get(last) : null; id = last; } // scripts before v1.8 send no id
+  if (!g) return;
+  weGos.delete(id);
+  const now = Date.now();
+  if (g.kind === 'manual') { wealthSyncAt = 0; weFailAt = now; return; }
+  weBgFails++; weBgFailAt = now;
+  const every = config.data.weSync.everyMin * 60e3;
+  const wait = Math.min(5 * 60e3 * 2 ** (weBgFails - 1), every);
+  weBgSyncAt = now - every + wait; // next background try in `wait`
 }
 function startWeSync() {
-  weServer = new WeSyncServer({ decide: weDecide, onAsk: () => { weScriptSeenAt = Date.now(); }, onFailed: () => { if (weLastGo === 'manual') wealthSyncAt = 0; else if (weLastGo === 'bg') weBgSyncAt = weBgPrev; weLastGo = null; } });
+  weServer = new WeSyncServer({ decide: weDecide, onAsk: () => { weScriptSeenAt = Date.now(); }, onFailed: weFailed });
   weServer.start();
 }
 
@@ -635,9 +672,9 @@ const ninja = new NinjaPrice({ fetch, userAgent: `Exilogue/${app.getVersion()} (
 function goalInfo() {
   const g = config.data.goal;
   if (!g.name) return null;
-  const live = ninja.get(config.data.league.name, g.name);
+  const live = ninja.get(config.data.league.name, g);
   const price = live && live.divines ? live.divines : g.divines;
-  return { name: g.name, art: goalArtId(g.name), price: price || null, source: live && live.divines ? 'ninja' : g.divines ? 'fixed' : null, at: live ? live.at : null, change: live ? live.change : null };
+  return { name: g.name, label: g.label || '', art: goalArtId(g), price: price || null, source: live && live.divines ? 'ninja' : g.divines ? 'fixed' : null, approx: !!(live && live.divines && live.approx), at: live ? live.at : null, change: live ? live.change : null };
 }
 // Divine price and 24 h changes for the items in your latest export (only what poe.ninja data already loaded knows).
 function pricesInfo(w) {
@@ -726,16 +763,23 @@ function aptInfo() {
 // Map glyph file names: "Jungle Valley Map" → "JungleValley".
 const glyphName = zone => String(zone || '').replace(/ Map$/, '').replace(/[^A-Za-z]/g, '');
 // Icon ids are lowercase letters, digits and hyphens (they are also the file names in the icon cache).
-const goalArtId = name => 'goal-' + String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+// Per goal (name, or name + a short hash of the exact variant), so a new goal never shows the previous goal's picture.
+const goalArtId = g => {
+  const slug = 'goal-' + String(g.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+  if (!g.id) return slug;
+  let h = 5381; for (const ch of g.id) h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0;
+  return slug.slice(0, 50) + '-' + h.toString(36).slice(0, 7);
+};
 const GLYPH = n => `https://web.poecdn.com/image/Art/2DItems/Maps/Atlas2Maps/New/${n}.png`;
 function iconExtras() {
   const out = [];
   const c = ninja.currency;
   if (c && c.icons.divine) out.push({ id: 'cur-divine', url: c.icons.divine });
   if (c && c.icons.chaos) out.push({ id: 'cur-chaos', url: c.icons.chaos });
-  const gname = config.data.goal.name;
+  const g = config.data.goal;
   // Only the art of the goal you have now (never the previous goal's picture next to a new name).
-  if (gname && ninja.cache && ninja.cache.icon && ninja.cache.key.endsWith('|' + gname.trim().toLowerCase())) out.push({ id: goalArtId(gname), url: ninja.cache.icon });
+  const gc = g.name && ninja.get(config.data.league.name, g);
+  if (gc && gc.icon) out.push({ id: goalArtId(g), url: gc.icon });
   const names = new Set();
   if (tracker) {
     const cur = tracker.s.currentMap;
@@ -949,6 +993,11 @@ function launchExe(exe) {
 
 function setupIpc() {
   ipcMain.handle('config:get', () => effectiveConfig());
+  // Goal search (all unique categories from poe.ninja; the first search loads them, ~7 requests, then cached an hour).
+  ipcMain.handle('goal:search', async (_e, q) => {
+    try { const r = await ninja.search(config.data.league.name, String(q || '').slice(0, 80)); return { ok: true, items: r.items || [], partial: !!r.partial }; }
+    catch (e) { return { ok: false, error: 'Could not load the item list from poe.ninja. Try again in a minute.' }; }
+  });
   ipcMain.handle('config:set', (_e, patch) => {
     const before = JSON.stringify([config.data.paths.clientTxt, config.data.league.start]);
     if (patch.league && patch.league.start != null) {
@@ -1011,9 +1060,14 @@ function setupIpc() {
   // At most once per WEALTH_SYNC_MS; within that, the plain page opens.
   ipcMain.handle('wealth:sync', () => {
     const left = wealthSyncAt + WEALTH_SYNC_MS - Date.now();
-    if (left > 0) { shell.openExternal(WEALTH_URL); return { ok: false, left }; }
+    // A WE tab is open when the userscript asked recently (v1.8 asks every 10 s; Firefox may slow a background tab down).
+    const tabOpen = !weForceTab && weScriptSeenAt && Date.now() - weScriptSeenAt < 60e3;
+    if (left > 0) { if (!tabOpen) shell.openExternal(WEALTH_URL); return { ok: false, left, inTab: !!tabOpen }; }
     wealthSyncAt = Date.now();
     weManualAt = wealthSyncAt; // picked up by the userscript via /we-sync (any open WE tab, or the one opened here)
+    weForceTab = false;
+    if (tabOpen) { weManualTtl = 45e3; return { ok: true, inTab: true }; }
+    weManualTtl = 2 * 60e3;
     shell.openExternal(WEALTH_URL + '#exilogue-sync'); // marker kept as a fallback if the server isn't reachable
     return { ok: true };
   });
@@ -1116,7 +1170,7 @@ app.whenReady().then(() => {
   setInterval(() => { if (dashWin && dashWin.isVisible() && !dashWin.isMinimized()) checkApt().catch(() => {}); }, 60 * 1000);
   setTimeout(() => checkApt().catch(() => {}), 4000);
   // poe.ninja: divine price and icons for everyone, goal price when a goal is set (each refreshes at most hourly).
-  const ninjaTick = () => ninja.refresh(config.data.league.name, config.data.goal.name).catch(() => {});
+  const ninjaTick = () => ninja.refresh(config.data.league.name, config.data.goal).catch(() => {});
   setTimeout(ninjaTick, 3000);
   setInterval(ninjaTick, 5 * 60 * 1000);
   setInterval(() => flushLeague({ force: false }), FLUSH_MS);

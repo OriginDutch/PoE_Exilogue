@@ -342,7 +342,7 @@
   function goal(size, { snap, st }) {
     const def = CARDS.goal;
     const g = snap.goal, w = snap.wealth;
-    const title = `<div class="row between lined"><span style="font-weight:600" class="ell">Goal${g ? ' · ' + E.esc(g.name) : ''}</span><span class="sub">${g && g.price ? (g.source === 'ninja' ? 'poe.ninja · ' : 'fixed · ') + num(g.price) + ' div' : ''}</span></div>`;
+    const title = `<div class="row between lined"><span style="font-weight:600" class="ell">Goal${g ? ' · ' + E.esc(g.name) + (g.label ? ' · ' + E.esc(g.label) : '') : ''}</span><span class="sub" style="flex:none">${g && g.price ? (g.source === 'ninja' ? 'poe.ninja · ' + (g.approx ? '≈ ' : '') : 'fixed · ') + num(g.price) + ' div' : ''}</span></div>`;
     if (!g || !g.price) {
       const msg = !g ? 'Pick an item to save for, like a Mageblood.' : `No poe.ninja price for ${E.esc(g.name)} yet. Set a fixed price as a fallback.`;
       if (size === 'xs') return xs(def, `<button class="btn q sm" data-nav="settings:league">Set goal</button>`);

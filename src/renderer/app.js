@@ -184,11 +184,21 @@
     motion: () => save({ ui: { motion: !state.cfg.ui.motion } }),
     'maps-all': async () => { ui.showAllMaps = !ui.showAllMaps; if (ui.showAllMaps) ui.allMaps = await ej.allMaps(); render(true); },
     'profile-check': async () => { await ej.checkProfile(); state.snap = await ej.snapshot(); render(true); },
+    'goal-pick': async () => {
+      if (ui.editing) return;
+      const g = state.cfg.goal;
+      const r = await E.goalPicker(g.name ? { name: g.name, label: g.label } : null);
+      if (!r) return;
+      if (r.clear) { await save({ goal: { name: '', id: null, type: null, label: '', divines: null } }); E.toast('Goal removed.'); }
+      // A new goal starts without the old goal's fixed fallback price.
+      else { await save({ goal: { name: r.name, id: r.id, type: r.type, label: r.label, divines: null } }); E.toast(`New goal: ${r.name}${r.label ? ' · ' + r.label : ''}`, { kind: 'ok' }); }
+      state.snap = await ej.snapshot(); render(true);
+    },
     'wealth-sync': async () => {
       if (ui.editing) return;
       const r = await ej.wealthSync();
       if (r.ok) { ui.weWaitSince = Date.now(); ui.weWaitAt = (state.snap.wealth && state.snap.wealth.at) || 0; }
-      E.toast(r.ok ? 'Wealthy Exile opened, syncing…' : `Synced recently. Next sync in ${Math.ceil(r.left / 60000)} min; opened Wealthy Exile.`);
+      E.toast(r.ok ? (r.inTab ? 'Syncing in your open Wealthy Exile tab…' : 'Wealthy Exile opened, syncing…') : `Synced recently. Next sync in ${Math.ceil(r.left / 60000)} min${r.inTab ? '' : '; opened Wealthy Exile'}.`);
       state.snap = await ej.snapshot(); render(true);
     },
     'storage-refresh': async () => { ui.storage = await ej.storage(); render(true); },
@@ -342,7 +352,10 @@
     // After a sync from the tile: say so once the new export has been picked up (gives up after 5 minutes).
     if (ui.weWaitSince) {
       const at = s.wealth && s.wealth.at;
+      const w = s.wealth || {};
       if (at && at > ui.weWaitAt) { ui.weWaitSince = 0; E.toast('Wealthy Exile export picked up ✓', { kind: 'ok' }); }
+      else if (w.manualExpiredAt > ui.weWaitSince) { ui.weWaitSince = 0; E.toastError("Your Wealthy Exile tab didn't respond. Press sync again to open it in a new tab."); }
+      else if (w.failAt > ui.weWaitSince) { ui.weWaitSince = 0; E.toastError("Wealthy Exile couldn't sync. Firefox shows why."); }
       else if (Date.now() - ui.weWaitSince > 5 * 60e3) ui.weWaitSince = 0;
     }
     syncIcons();

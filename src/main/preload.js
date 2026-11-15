@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('ej', {
   allMaps: () => ipcRenderer.invoke('maps:all'),
   launch: which => ipcRenderer.invoke('launch', which),
   wealthSync: () => ipcRenderer.invoke('wealth:sync'),
+  goalSearch: q => ipcRenderer.invoke('goal:search', q),
   openUrl: url => ipcRenderer.invoke('open:url', url),
   pickFile: opts => ipcRenderer.invoke('pick:file', opts),
   neversinkSynced: () => ipcRenderer.invoke('neversink:synced'),

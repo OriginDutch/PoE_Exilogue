@@ -11,7 +11,7 @@ base_cfg = {
   "hotkeys": {"toggleOverlay": "Ctrl+Alt+T", "unlockOverlay": "Ctrl+Alt+L", "focusDashboard": "Ctrl+Alt+J"},
   "ui": {"theme": "system", "darkPalette": "night", "lightPalette": "paper", "font": "source", "motion": True, "sidebarCollapsed": False, "welcomeDone": True},
   "layout": {"order": ["poe","maps","campaign","wealthy","overlay","filter","pob","apt","ninja","trade","goal","today","fate","threads"], "sizes": {}, "hidden": {}},
-  "breaks": {"enabled": True, "campaign": True, "everyMin": 60}, "goal": {"name": "Mageblood", "divines": None},
+  "breaks": {"enabled": True, "campaign": True, "everyMin": 60}, "goal": {"name": "Mageblood", "id": "mageblood-4-flasks-heavy-belt", "type": "UniqueAccessory", "label": "4 Flasks", "divines": None},
   "launch": {"pob": True, "apt": True, "we": True, "custom": [{"id": "c1", "name": "Sidekick", "target": "C:\\Tools\\Sidekick.exe", "on": False}]}, "weSync": {"background": True, "everyMin": 30},
   "window": {}, "neversink": {}, "systemDark": True, "overlayUnlocked": False, "platform": "win32"}
 cache = {}
@@ -31,7 +31,7 @@ if (window.__SNAP.stats) { const n = window.__SNAP.now;
   window.__SNAP.paths.aptExe = true;
   if (window.__SNAP.neversink && window.__SNAP.neversink.latest) window.__SNAP.neversink.latest.notes = ['Currency tiers rebalanced for 3.30','Added styles for the new Coven items','Omens moved to their own tier list','Fixed Divination Card colours','Strictness levels retuned'];
   window.__SNAP.divRate = window.__SNAP.divRate || {divines: 1.3, perHour: 0.41};
-  window.__SNAP.goal = window.__SNAP.goal || {name:'Mageblood', art:'goal-mageblood', price:107, source:'ninja', at:n, change:-2};
+  window.__SNAP.goal = window.__SNAP.goal || {name:'Mageblood', label:'4 Flasks', art:'goal-mageblood', price:107, source:'ninja', at:n, change:-2};
   window.__SNAP.mostRun = {zone:'Strand Map', tier:14, runs:11};
   window.__SNAP.today = window.__SNAP.today || {from:n-8*3600e3, firstAt:n-4*3600e3, sessions:2, levelFrom:83, levelTo:86, breakMs:24*60e3, newTiers:2, maps:23, deaths:3, mostRun:{zone:'Strand Map', tier:14, runs:5}, deadliest:{zone:'Tower Map', tier:13, deaths:2}};
   if (window.__SNAP.stats.session) Object.assign(window.__SNAP.stats.session, {breaks:2, breakMs:24*60e3, lastBreakEnd:n-41*60e3});
