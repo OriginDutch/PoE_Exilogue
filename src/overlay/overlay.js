@@ -8,6 +8,7 @@
   let cfg = await ej.getConfig();
   let snap = await ej.snapshot();
   let unlocked = false;
+  let chimedAt = 0;
   let lastH = 0, lastX = -1, lastHtml = null, lastCls = null;
   EX.state = { cfg };
 
@@ -17,8 +18,17 @@
     const font = o.font === 'app' ? cfg.ui.font : o.font;
     const cls = `app ov ovt-${cfg.ui.darkPalette} sz-${o.size} f-${font}${paused ? ' paused' : ''}${unlocked ? ' unl' : ''}`;
     const rows = E.overlayRows(cfg, snap.stats, paused, { divRate: snap.divRate });
-    const bp = !unlocked && !paused && snap.breakPrompt;
+    const bp = !unlocked && !paused && snap.breakPrompt && snap.breakPrompt.revealed ? snap.breakPrompt : null; // after the big splash
     const brkHtml = bp ? E.breakPrompt(cfg, bp) : '';
+    // One sound per "Take a break?" (a new prompt has a new shownAt). The splash plays it; here only when there was none.
+    if (bp && bp.shownAt !== chimedAt) {
+      chimedAt = bp.shownAt;
+      const snd = cfg.breaks && cfg.breaks.sound;
+      if (!bp.splash && !bp.silent && snd && snd.on && snd.volume > 0) {
+        const file = snd.file === 'shrine' ? 'shrine.wav' : 'break-chime.wav';
+        try { const a = new Audio('../renderer/sounds/' + file); a.volume = snd.volume / 100; a.play().catch(() => {}); } catch { /* no audio device */ }
+      }
+    }
     const extra = unlocked
       ? `<div class="bar"><span>Drag to move · corners resize</span><button data-lock>${ic.lock()} Lock</button></div>
          <span class="hdl hl ht" data-h="l" aria-hidden="true"></span><span class="hdl hr2 ht" data-h="r" aria-hidden="true"></span>

@@ -44,7 +44,8 @@ const DEFAULT_CONFIG = {
   },
   hotkeys: { toggleOverlay: 'Ctrl+Alt+T', unlockOverlay: 'Ctrl+Alt+L', focusDashboard: 'Ctrl+Alt+J', breakTaken: '' },
   // "Take a break?": asked after `everyMin` of play, ~10 s after leaving a map (or entering a town in the campaign).
-  breaks: { enabled: true, campaign: true, everyMin: 60 },
+  // sound: a short chime when "Take a break?" shows. Off for new installs; existing installs get it on once (see startup).
+  breaks: { enabled: true, campaign: true, everyMin: 60, sound: { on: false, volume: 50, file: 'chime' } },
   // Home goal: an item to save for. Price from poe.ninja; `divines` is the fixed fallback when it isn't found.
   goal: { name: 'Mageblood', id: null, type: null, label: '', divines: null },
   ui: {
@@ -97,6 +98,10 @@ function sanitizeConfig() {
   if (!['night', 'spectral', 'silver'].includes(c.ui.darkPalette)) c.ui.darkPalette = 'night';
   c.ui.lightPalette = 'paper';
   c.breaks.everyMin = Math.min(240, Math.max(15, Math.round(Number(c.breaks.everyMin) || 60)));
+  if (!c.breaks.sound || typeof c.breaks.sound !== 'object' || Array.isArray(c.breaks.sound)) c.breaks.sound = { on: false, volume: 50, file: 'chime' };
+  c.breaks.sound.on = !!c.breaks.sound.on;
+  { const v = c.breaks.sound.volume; const n = v === null || v === '' ? NaN : Number(v); c.breaks.sound.volume = Number.isFinite(n) ? Math.min(100, Math.max(0, Math.round(n))) : 50; }
+  if (!['chime', 'shrine'].includes(c.breaks.sound.file)) c.breaks.sound.file = 'chime';
   c.goal.name = String(c.goal.name || '').slice(0, 80);
   // Picked in the goal search: poe.ninja's id of that exact line (variant, links, relic), its category and a short label.
   c.goal.id = c.goal.name && typeof c.goal.id === 'string' && /^[a-z0-9-]{1,120}$/.test(c.goal.id) ? c.goal.id : null;
@@ -271,6 +276,8 @@ function startTracking() {
       if (ev && ev.type === 'logOpen' && caughtUp) setImmediate(checkGameProcess);
     }
     if (tracker.s.unknownName) { tracker.s.unknownName = null; refreshProfileSoon(); }
+    // A zone change hides "Take a break?" (and its splash) at once instead of at the next 2 s tick.
+    if (breakPrompt && tracker.s.area && tracker.s.area.enteredAt !== breakPrompt.areaAt) breakTick();
   });
   watcher.on('error', e => console.error('Client.txt read error, retrying:', e.message));
   const markCaughtUp = () => {
@@ -378,7 +385,7 @@ const sentKey = new Map(); // webContents id -> data key last sent
 const hiddenWc = new Set(); // windows whose page reports it can't be seen (covered by the game, etc.)
 let lastIdleTick = 0;
 function statusKey() {
-  return JSON.stringify([gen, updateState, breakPrompt && breakPrompt.shownAt, ninja.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [(weManualTick(), wealth.rev), wealth.lastError, wealthSyncAt, weBgSyncAt, weManualExpiredAt, weFailAt, Math.floor(weScriptSeenAt / 300000)] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, overlayUnlocked,
+  return JSON.stringify([gen, updateState, breakPrompt && [breakPrompt.shownAt, breakPrompt.revealed], ninja.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [(weManualTick(), wealth.rev), wealth.lastError, wealthSyncAt, weBgSyncAt, weManualExpiredAt, weFailAt, Math.floor(weScriptSeenAt / 300000)] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, overlayUnlocked,
     profileStatus, neversinkLatest, config.data.neversink, pathsCache, leagueDb && leagueDb.corruptFile]);
 }
 function broadcast() {
@@ -497,26 +504,91 @@ function registerHotkeys() {
 // A minute of idle counts as a break, from the moment the input stopped.
 const BREAK_IDLE_MS = 60 * 1000;
 const BREAK_SNOOZE_MS = 30 * 60 * 1000;
-const BREAK_PROMPT_MS = 15 * 1000;
-const BREAK_AFTER_ZONE_MS = 10 * 1000;
+// Shows ~3 s after you arrive in a hideout or town and stays until you enter the next zone (or go away from the PC).
+const BREAK_AFTER_ZONE_MS = 3 * 1000;
 let idleSince = null;      // start of the current idle stretch (only once it is long enough to matter)
-let breakPrompt = null;    // { shownAt, sinceMs } while "Take a break?" is on screen
+let breakPrompt = null;    // { shownAt, sinceMs, areaAt, revealed, splash } while "Take a break?" is on screen
+// First "Time for a break?" big in the middle of the screen for 1.5 s, sliding to the overlay in 0.5 s (splash window);
+// the overlay shows the regular popup once `revealed`.
+const BREAK_SPLASH_MS = 2000;
+let splashWin = null, splashTimer = null;
+function closeSplash() {
+  clearTimeout(splashTimer); splashTimer = null;
+  if (splashWin && !splashWin.isDestroyed()) splashWin.destroy();
+  splashWin = null;
+}
+function revealBreak(shownAt) {
+  closeSplash();
+  const bp = breakPrompt;
+  if (!bp || bp.shownAt !== shownAt || bp.revealed) return;
+  // Still in the hideout/town it was meant for? A zone change during the splash means: never show it.
+  const a = tracker && tracker.s.area;
+  if (!a || a.enteredAt !== bp.areaAt) { breakPrompt = null; breakSnoozeUntil = Date.now() + BREAK_SNOOZE_MS; broadcast(); return; }
+  bp.revealed = true;
+  broadcast();
+}
+function startBreakSplash() {
+  const bp = breakPrompt;
+  const ovShown = overlayWin && !overlayWin.isDestroyed() && overlayWin.isVisible() && !overlayUnlocked;
+  // No overlay on screen (off, or unlocked to move it): nowhere to slide to, no popup to see, and no sound.
+  if (!ovShown) { bp.revealed = true; bp.silent = true; return; }
+  try {
+    const ov = overlayWin.getBounds();
+    const disp = screen.getDisplayMatching(ov), d = disp.bounds, wa = disp.workArea;
+    // Same side rule as the overlay (its screen.availLeft/availWidth = this display's work area). The popup is 200 px
+    // wide inside 14 px window padding and centred on the overlay's height.
+    const right = ov.x + ov.width + 210 <= wa.x + wa.width;
+    const tx = Math.round((right ? ov.x + ov.width + 96 : ov.x - 96) - d.x);
+    const ty = Math.round(ov.y + ov.height / 2 - d.y);
+    const s = config.data.breaks.sound, ui = config.data.ui;
+    splashWin = new BrowserWindow({
+      x: d.x, y: d.y, width: d.width, height: d.height,
+      frame: false, transparent: true, resizable: false, movable: false, skipTaskbar: true, focusable: false,
+      alwaysOnTop: true, hasShadow: false, show: false,
+      webPreferences: { contextIsolation: true, sandbox: true },
+    });
+    splashWin.setIgnoreMouseEvents(true);
+    splashWin.setAlwaysOnTop(true, 'screen-saver');
+    splashWin.loadFile(path.join(__dirname, '..', 'overlay', 'splash.html'), { query: {
+      tx: String(tx), ty: String(ty), motion: ui.motion ? '1' : '0', pal: ui.darkPalette,
+      snd: s.on && s.volume > 0 ? '1' : '0', vol: String(s.volume), sound: s.file || 'chime',
+    } });
+    bp.splash = true;
+    const at = bp.shownAt;
+    const win = splashWin;
+    // The splash's own 1.5 s + 0.5 s start when its page has loaded; so does this clock (else a slow load eats the slide).
+    win.once('ready-to-show', () => {
+      if (win.isDestroyed() || splashWin !== win) return;
+      win.showInactive();
+      clearTimeout(splashTimer); splashTimer = setTimeout(() => revealBreak(at), BREAK_SPLASH_MS);
+    });
+    // Never loads (or crashes): no splash after all; the overlay shows the popup and plays the sound itself.
+    const fail = () => {
+      if (splashWin !== win) return;
+      closeSplash();
+      if (breakPrompt && breakPrompt.shownAt === at) { breakPrompt.splash = false; revealBreak(at); }
+    };
+    win.webContents.once('did-fail-load', fail);
+    win.webContents.once('render-process-gone', fail);
+    splashTimer = setTimeout(fail, 4000);
+  } catch { closeSplash(); bp.revealed = true; bp.splash = false; }
+}
 let breakSnoozeUntil = 0;
 
 function takeBreak() {
-  breakPrompt = null;
+  breakPrompt = null; closeSplash();
   if (tracker && tracker.s.session && !tracker.s.session.ended) { const now = Date.now(); tracker.addBreak(now, now, 'manual'); }
 }
 
 function breakTick() {
-  if (!tracker || !caughtUp || !gameRunning) { idleSince = null; breakPrompt = null; return; }
+  if (!tracker || !caughtUp || !gameRunning) { idleSince = null; breakPrompt = null; closeSplash(); return; }
   const se = tracker.s.session;
-  if (!se || se.ended) return;
+  if (!se || se.ended) { if (breakPrompt) { breakPrompt = null; closeSplash(); } return; } // session over: nothing to ask
   const now = Date.now();
   const idleMs = powerMonitor.getSystemIdleTime() * 1000;
   if (idleMs >= BREAK_IDLE_MS) {
     if (idleSince == null) idleSince = now - idleMs;
-    breakPrompt = null;
+    breakPrompt = null; closeSplash();
     return;
   }
   if (idleSince != null) { // back from being away
@@ -526,8 +598,8 @@ function breakTick() {
   }
   if (breakPrompt) {
     const a = tracker.s.area;
-    const left = !a || (a.kind !== 'hideout' && a.kind !== 'town'); // into a map: gone at once, never asked in a map
-    if (left || now - breakPrompt.shownAt > BREAK_PROMPT_MS) { breakPrompt = null; breakSnoozeUntil = now + BREAK_SNOOZE_MS; }
+    const moved = !a || a.enteredAt !== breakPrompt.areaAt; // the next zone (a map, another town): gone at once
+    if (moved) { breakPrompt = null; closeSplash(); breakSnoozeUntil = now + BREAK_SNOOZE_MS; }
     return;
   }
   const b = config.data.breaks;
@@ -540,7 +612,8 @@ function breakTick() {
   const inCampaign = tracker.liveSnapshot(now).runId != null; // an unfinished campaign run is going
   if (area.kind === 'town' && inCampaign && !b.campaign) return;
   if (area.enteredAt == null || now - area.enteredAt < BREAK_AFTER_ZONE_MS) return;
-  breakPrompt = { shownAt: now, sinceMs: since };
+  breakPrompt = { shownAt: now, sinceMs: since, areaAt: area.enteredAt, revealed: false, splash: false };
+  startBreakSplash();
 }
 
 // div per hour this session, from the Wealthy Exile exports around it (null until there are two).
@@ -1140,8 +1213,14 @@ app.on('web-contents-created', (_e, wc) => {
 app.whenReady().then(() => {
   if (!app.hasSingleInstanceLock()) return;
   const dir = app.getPath('userData');
-  config = new JsonStore(path.join(dir, 'config.json'), DEFAULT_CONFIG);
+  // Break sound: on for an install that already had a config before the option existed, off for a new install.
+  const cfgFile = path.join(dir, 'config.json');
+  let soundMigrate = false;
+  try { const raw = JSON.parse(fs.readFileSync(cfgFile, 'utf8')); soundMigrate = !(raw && raw.breaks && raw.breaks.sound); } catch { /* new install */ }
+  config = new JsonStore(cfgFile, DEFAULT_CONFIG);
+  if (soundMigrate) { config.data.breaks.sound = { on: true, volume: 50, file: 'shrine' }; } // Marcel's pick for his own install
   sanitizeConfig();
+  if (soundMigrate) config.save();
   leagueDb = new LeagueDb(path.join(dir, 'league.db'));
   if (!config.data.io.since) { config.data.io.since = Date.now(); config.save(); }
   const legacy = path.join(dir, 'state.json');

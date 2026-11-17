@@ -205,6 +205,7 @@
   EX.overlayControls = (cfg, snap) => {
     const o = cfg.overlay;
     const b = cfg.breaks || { enabled: true, campaign: true, everyMin: 60 };
+    const snd = b.sound || { on: false, volume: 50 };
     const fonts = [['app', 'Same as app'], ['source', 'Source Sans 3'], ['bahnschrift', 'Bahnschrift'], ['inter', 'Inter'], ['segoe', 'Segoe UI']];
     return `<section class="box"><div class="bh"><h2>Overlay</h2>${E.sw(o.enabled, 'Show overlay', 'ov-toggle')}</div>
         <div class="row between"><span class="muted">Toggle overlay</span>${E.kbd(cfg.hotkeys.toggleOverlay)}</div>
@@ -215,7 +216,13 @@
         <div class="row between"><span class="muted">Ask after</span><select class="select" style="width:auto" data-brkevery>${[30, 45, 60, 90, 120].map(m => `<option value="${m}" ${b.everyMin === m ? 'selected' : ''}>${m} min of play</option>`).join('')}</select></div>
         <div class="row between"><span class="muted">Also during the campaign</span>${E.sw(b.campaign, 'Also during the campaign', 'brk-campaign')}</div>
         <div class="row between"><button class="btn sm" data-act="brk-taken">I took a break</button>${cfg.hotkeys.breakTaken ? E.kbd(cfg.hotkeys.breakTaken) : '<button class="btn q sm" data-nav="settings:hotkeys">Set a hotkey</button>'}</div>
-        ${E.note('Never in a map: it asks about 10 seconds after you reach your hideout or a town. A minute without mouse or keyboard counts as a break by itself.')}</section>
+        <div class="row between"><span class="muted">Play a sound</span>${E.sw(snd.on, 'Play a sound when it asks', 'brk-sound')}</div>
+        <div class="row between"><label class="muted" for="brksnd">Sound</label><select id="brksnd" class="select" style="width:auto" data-brksnd ${snd.on ? '' : 'disabled'}>${[['chime', 'Chime'], ['shrine', 'Shrine (in-game)']].map(([v, l]) => `<option value="${v}" ${snd.file === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="row" style="gap:10px;align-items:center"><label class="muted" for="brkvol" style="white-space:nowrap">Volume</label>
+          <input id="brkvol" type="range" min="0" max="100" step="5" value="${snd.volume}" data-brkvol class="grow" ${snd.on ? '' : 'disabled'} aria-valuetext="${snd.volume}%">
+          <span class="sub" style="flex:none;min-width:4.5ch;overflow:visible;text-align:right;font-variant-numeric:tabular-nums">${snd.volume}%</span>
+          <button class="btn q sm" data-act="brk-sound-test" ${snd.on ? '' : 'disabled'}>Test</button></div>
+        ${E.note('Never in a map: it asks about 3 seconds after you reach your hideout or a town, and stays until you enter the next zone. A minute without mouse or keyboard counts as a break by itself.')}</section>
       <section class="box"><h2>Overlay text</h2>
         <div class="field"><label class="lbl" for="ovf">Font</label><select id="ovf" class="select" data-ovfont>${fonts.map(([v, l]) => `<option value="${v}" ${o.font === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         <div class="field"><span class="lbl" id="ovs-l">Size</span><div role="radiogroup" aria-labelledby="ovs-l" class="seg" style="align-self:flex-start">

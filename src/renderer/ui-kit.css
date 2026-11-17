@@ -37,6 +37,8 @@
 .side.col .nav .lb{display:none}
 .nav.on{background:var(--card2);color:var(--tx);box-shadow:0 1px 0 var(--sheen) inset}
 .nav.on .mini{border-color:var(--acc);color:var(--acc-tx)}
+.mini.img{padding:0;overflow:hidden;background:var(--card2)}
+.mini.img img{width:82%;height:82%;object-fit:contain;display:block}
 .nav.soon{opacity:.5;cursor:default}
 .nav.soon:hover{background:none;color:var(--tx2)}
 .nav .ic{width:24px;display:grid;place-items:center;flex:none}
@@ -384,6 +386,7 @@ html.no-motion .view{animation:none}
 .dt.w{color:#eef1f5;background:rgba(238,241,245,.12)}.dt.y{color:#f0cf62;background:rgba(240,207,98,.14)}.dt.r{color:#f07466;background:rgba(240,116,102,.15)}
 .t-paper .dt.w{color:#3b4350;background:rgba(40,50,70,.08)}.t-paper .dt.y{color:#8a6a10;background:rgba(160,120,20,.12)}.t-paper .dt.r{color:#a8382a;background:rgba(168,56,42,.1)}
 .spark{width:100%;height:54px;display:block}
+.spark-ax{display:flex;justify-content:space-between;margin-top:3px;font-size:11px;color:var(--tx3);font-variant-numeric:tabular-nums}
 .dtbl{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
 .dtbl th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);font-weight:600;padding:0 0 4px}
 .dtbl th:nth-child(2){width:46px}.dtbl th:nth-child(3){width:52px}.dtbl th:nth-child(4){width:52px}

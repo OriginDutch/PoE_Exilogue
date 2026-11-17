@@ -11,7 +11,7 @@ base_cfg = {
   "hotkeys": {"toggleOverlay": "Ctrl+Alt+T", "unlockOverlay": "Ctrl+Alt+L", "focusDashboard": "Ctrl+Alt+J"},
   "ui": {"theme": "system", "darkPalette": "night", "lightPalette": "paper", "font": "source", "motion": True, "sidebarCollapsed": False, "welcomeDone": True},
   "layout": {"order": ["poe","maps","campaign","wealthy","overlay","filter","pob","apt","ninja","trade","goal","today","fate","threads"], "sizes": {}, "hidden": {}},
-  "breaks": {"enabled": True, "campaign": True, "everyMin": 60}, "goal": {"name": "Mageblood", "id": "mageblood-4-flasks-heavy-belt", "type": "UniqueAccessory", "label": "4 Flasks", "divines": None},
+  "breaks": {"enabled": True, "campaign": True, "everyMin": 60, "sound": {"on": True, "volume": 50}}, "goal": {"name": "Mageblood", "id": "mageblood-4-flasks-heavy-belt", "type": "UniqueAccessory", "label": "4 Flasks", "divines": None},
   "launch": {"pob": True, "apt": True, "we": True, "custom": [{"id": "c1", "name": "Sidekick", "target": "C:\\Tools\\Sidekick.exe", "on": False}]}, "weSync": {"background": True, "everyMin": 30},
   "window": {}, "neversink": {}, "systemDark": True, "overlayUnlocked": False, "platform": "win32"}
 cache = {}
@@ -24,7 +24,7 @@ window.__SNAP = %s; window.__CFG = %s;
 if (window.__ICONS) window.__SNAP.icons = window.__ICONS;
 if (window.__WEALTH) window.__SNAP.wealth = window.__WEALTH;
 if (window.__SNAP.stats) { const n = window.__SNAP.now;
-  window.__SNAP.wealth = window.__SNAP.wealth || {history:[41,43,42,47,49,48,53,55,54,58,61,60,64.2].map((d,i)=>({t:n-(13-i)*3600e3, divines:d})), count:3, at: n-12*60e3, chaos:58350, divPrice:909, divines:64.2, delta:2900, prevAt: n-3*3600e3, top:[{name:'Divine Orb',qty:42,total:38157},{name:'Headhunter',qty:1,total:12000},{name:'Orb of Chance',qty:3048,total:4755}], error:null, syncAt: n-20*60e3, syncEvery: 300000};
+  window.__SNAP.wealth = window.__SNAP.wealth || {history:[[41,70],[43,69],[42,68.5],[47,50],[49,49],[48,48.5],[53,30],[55,29],[54,28],[58,6],[61,4],[60,2],[64.2,0]].map(([d,h])=>({t:n-h*3600e3, divines:d})), count:3, at: n-12*60e3, chaos:58350, divPrice:909, divines:64.2, delta:2900, prevAt: n-3*3600e3, top:[{name:'Divine Orb',qty:42,total:38157},{name:'Headhunter',qty:1,total:12000},{name:'Orb of Chance',qty:3048,total:4755}], error:null, syncAt: n-20*60e3, syncEvery: 300000};
   window.__SNAP.pobBuild = {name:'ED Trickster 3.30', file:'C:\\Users\\you\\Documents\\Path of Building\\Builds\\ED Trickster 3.30.xml', mtime:n-14*3600e3, level:92, cls:'Shadow', asc:'Trickster', skill:'Essence Drain', stats:{CombinedDPS:2412000, Life:4850, EnergyShield:2100, Evasion:6800, EffectiveSpellSuppressionChance:100, FireResist:76, ColdResist:76, LightningResist:75, ChaosResist:-12}};
   window.__SNAP.apt = {running:true, launchedAt:n-593*60e3, key:'Ctrl + D'};
   window.__SNAP.prices = {divineChaos:95.7, at:n, changes:{'Headhunter':8.2, 'Orb of Chance':-3.1}};

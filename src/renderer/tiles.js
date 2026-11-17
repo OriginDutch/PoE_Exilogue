@@ -68,12 +68,23 @@
   }
 
   // ---------- Wealthy Exile ----------
+  // Net worth over the league, placed on real time (an export gap of 10 h is wider than one of 5 min),
+  // with a time axis: times of day for under ~36 h, otherwise dates.
   function spark(pts) {
     if (!pts || pts.length < 2) return '<div class="sub" style="height:54px;display:grid;place-items:center">The chart fills in with your exports</div>';
     const w = 220, h = 54, v = pts.map(p => p.divines), mx = Math.max(...v), mn = Math.min(...v);
-    const X = i => (i / (pts.length - 1)) * w, Y = x => h - 4 - ((x - mn) / (mx - mn || 1)) * (h - 10);
-    const d = v.map((x, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(x).toFixed(1)}`).join(' ');
-    return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Net worth over the league, ${num(v[0])} to ${num(v[v.length - 1])} div"><path d="${d} L${w} ${h} L0 ${h}Z" fill="var(--ok)" opacity=".12"/><path d="${d}" fill="none" stroke="var(--ok)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
+    const t0 = pts[0].t, t1 = pts[pts.length - 1].t, span = t1 - t0 || 1;
+    const X = p => ((p.t - t0) / span) * w, Y = x => h - 4 - ((x - mn) / (mx - mn || 1)) * (h - 10);
+    const d = pts.map((p, i) => `${i ? 'L' : 'M'}${X(p).toFixed(1)} ${Y(p.divines).toFixed(1)}`).join(' ');
+    const short = span < 36 * 3600e3;
+    const fmt = t => {
+      const dt = new Date(t);
+      return short ? dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+        : dt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    };
+    const ticks = [t0, t0 + span / 2, t1].map(fmt);
+    const ax = `<div class="spark-ax" aria-hidden="true"><span>${esc(ticks[0])}</span><span>${esc(ticks[1])}</span><span>${esc(ticks[2])}</span></div>`;
+    return `<div class="spark-wrap"><svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Net worth from ${esc(fmt(t0))} to ${esc(fmt(t1))}: ${num(v[0])} to ${num(v[v.length - 1])} div"><path d="${d} L${w} ${h} L0 ${h}Z" fill="var(--ok)" opacity=".12"/><path d="${d}" fill="none" stroke="var(--ok)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>${ax}</div>`;
   }
   function wealthy({ snap }) {
     const w = snap.wealth;

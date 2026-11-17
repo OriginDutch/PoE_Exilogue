@@ -32,6 +32,11 @@
     renderSide();
   }
 
+  // The same chime the overlay plays for "Take a break?" (Settings: Test, and when you let go of the volume slider).
+  function playChime(vol, file = state.cfg.breaks.sound.file) {
+    try { const a = new Audio('sounds/' + (file === 'shrine' ? 'shrine.wav' : 'break-chime.wav')); a.volume = Math.max(0, Math.min(1, vol / 100)); a.play().catch(() => {}); } catch { /* no audio device */ }
+  }
+
   // ---------- sidebar ----------
   const TOOLS = [['poe', 'PE', 'Path of Exile'], ['maps', 'SM', 'Session &amp; Maps'], ['campaign', 'CP', 'Campaign'], ['overlay', 'OV', 'Overlay'], ['filter', 'LF', 'Loot filter'], ['pob', 'PB', 'Path of Building']];
   const LINKS = [['wealthy', 'WE', 'Wealthy Exile', 'https://wealthyexile.com'], ['ninja', 'PN', 'poe.ninja', 'https://poe.ninja'], ['trade', 'TR', 'Trade', 'https://www.pathofexile.com/trade']];
@@ -44,13 +49,15 @@
       const on = ui.view === key;
       return `<button class="nav${on ? ' on' : ''}" ${attrs} ${on ? 'aria-current="page"' : ''} title="${col ? label.replace('&amp;', '&') : ''}">${icon}<span class="lb">${label}</span></button>`;
     };
+    // Same art as the tiles; the two-letter monogram only where there is none (yet).
+    const mini = (id, m) => { const src = E.iconOf(id); return src ? `<span class="mini img" aria-hidden="true"><img src="${E.esc(src)}" alt=""></span>` : `<span class="mini" aria-hidden="true">${m}</span>`; };
     side.innerHTML = `<div class="brand">${ic.brand()}<span>Exilogue</span></div>
       ${item('home', `<span class="ic">${ic.home()}</span>`, 'Home', 'data-nav="home"')}
       ${item('events', `<span class="ic">${ic.events()}</span>`, 'Events', 'data-nav="events"')}
       <div class="sec">Tools</div>
-      ${TOOLS.map(([id, m, l]) => item('page:' + id, `<span class="mini" aria-hidden="true">${m}</span>`, l, `data-nav="page:${id}"`)).join('')}
+      ${TOOLS.map(([id, m, l]) => item('page:' + id, mini(id, m), l, `data-nav="page:${id}"`)).join('')}
       <div class="sec">Links</div>
-      ${LINKS.map(([id, m, l, u]) => item('link:' + id, `<span class="mini" aria-hidden="true">${m}</span>`, l, `data-url="${u}"`)).join('')}
+      ${LINKS.map(([id, m, l, u]) => item('link:' + id, mini(id, m), l, `data-url="${u}"`)).join('')}
       <div class="sec">Coming soon</div>
       ${SOON.map(([id, m, l]) => `<button class="nav soon" disabled title="${col ? l : ''}"><span class="mini" aria-hidden="true">${m}</span><span class="lb">${l}</span></button>`).join('')}
       <div class="spacer"></div>
@@ -167,6 +174,8 @@
     'update-check': async () => { await ej.updateCheck(); E.toast('Checking for updates…'); setTimeout(() => render(true), 3000); },
     'brk-toggle': () => save({ breaks: { enabled: !state.cfg.breaks.enabled } }),
     'brk-campaign': () => save({ breaks: { campaign: !state.cfg.breaks.campaign } }),
+    'brk-sound': () => save({ breaks: { sound: { on: !state.cfg.breaks.sound.on } } }),
+    'brk-sound-test': () => playChime(state.cfg.breaks.sound.volume),
     'brk-taken': async () => { await ej.breakTaken(); E.toast(`Break noted. The next "Take a break?" comes after ${state.cfg.breaks.everyMin} minutes of play.`); },
     'ov-unlock': () => ej.lockOverlay(!!state.snap.overlayUnlocked),
     'ov-reset': () => ej.resetOverlay(),
@@ -262,12 +271,19 @@
 
   // Typing in the "add a program" fields: kept in ui so a re-render doesn't lose it.
   main.addEventListener('input', e => {
+    if (e.target.dataset && 'brkvol' in e.target.dataset) { const o = e.target.nextElementSibling; if (o) o.textContent = e.target.value + '%'; e.target.setAttribute('aria-valuetext', e.target.value + '%'); return; }
     const k = e.target.dataset && e.target.dataset.lnew;
     if (k === 'name') ui.lnewName = e.target.value; else if (k === 'target') ui.lnewTarget = e.target.value;
   });
   main.addEventListener('change', async e => {
     const t = e.target;
     if ('brkevery' in t.dataset) return save({ breaks: { everyMin: Number(t.value) } });
+    if ('brkvol' in t.dataset) { // arrow keys fire a change per step: save and preview once you stop
+      const v = Number(t.value); clearTimeout(ui.volTimer);
+      ui.volTimer = setTimeout(() => { save({ breaks: { sound: { volume: v } } }); playChime(v); }, 350);
+      return;
+    }
+    if ('brksnd' in t.dataset) { await save({ breaks: { sound: { file: t.value } } }); playChime(state.cfg.breaks.sound.volume, t.value); return; }
     if ('weevery' in t.dataset) return save({ weSync: { everyMin: Number(t.value) } });
     if ('ovfont' in t.dataset) return save({ overlay: { font: t.value } });
     if ('ovsize' in t.dataset) return save({ overlay: { size: t.value } });
@@ -344,7 +360,7 @@
     const rev = state.snap && state.snap.iconsRev;
     if (rev == null || rev === state.iconsRev) return;
     state.iconsRev = rev;
-    ej.icons().then(map => { state.icons = map || {}; if (!ui.editing && !document.hidden) render(true); });
+    ej.icons().then(map => { state.icons = map || {}; renderSide(); if (!ui.editing && !document.hidden) render(true); });
   }
   ej.onSnapshot(s => {
     const prevHk = JSON.stringify([state.snap && state.snap.hotkeys, state.snap && state.snap.profileStatus]);
