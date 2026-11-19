@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('ej', {
   sheetSearch: q => ipcRenderer.invoke('sheet:search', q),
   sheetOpen: () => ipcRenderer.invoke('sheet:open'),
   sheetPin: on => ipcRenderer.invoke('sheet:pin', on),
+  sheetSort: (id, sort) => ipcRenderer.invoke('sheet:sort', id, sort),
   sheetRefresh: () => ipcRenderer.invoke('sheet:refresh'),
   openUrl: url => ipcRenderer.invoke('open:url', url),
   pickFile: opts => ipcRenderer.invoke('pick:file', opts),

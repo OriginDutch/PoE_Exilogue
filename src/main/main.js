@@ -1429,6 +1429,15 @@ function setupIpc() {
   ipcMain.on('win:close', e => { const w = ownWin(e); if (w) w.close(); });
   ipcMain.handle('sheet:open', () => { openSheetWindow(); return true; });
   ipcMain.handle('sheet:pin', (_e, on) => { setSheetPin(on); return true; });
+  // Sort button in the sheet window: changes only that sheet's order setting (never the whole list).
+  ipcMain.handle('sheet:sort', (_e, id, sort) => {
+    const sh = config.data.sheets.list.find(x => x.id === id);
+    if (!sh || (sort !== 'value' && sort !== 'manual')) return false;
+    sh.sort = sort;
+    config.saveSoon();
+    broadcastConfig();
+    return true;
+  });
   ipcMain.handle('sheet:search', async (_e, q) => {
     try { const r = await ninja.sheetSearch(config.data.league.name, String(q || '').slice(0, 80)); return { ok: true, items: r.items, partial: r.partial }; }
     catch { return { ok: false, error: 'Could not load the item lists from poe.ninja. Try again in a minute.' }; }
