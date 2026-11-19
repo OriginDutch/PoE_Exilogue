@@ -962,10 +962,12 @@ function openSheetWindow() {
   }
   sheetWin = new BrowserWindow({
     width: w.w, height: w.h, ...pos, minWidth: 280, minHeight: 200,
-    frame: false, backgroundColor: '#0a0f18', title: APP_NAME + ' · Cheat sheets', show: false, alwaysOnTop: w.pin,
+    frame: false, backgroundColor: '#0a0f18', title: APP_NAME + ' · Cheat sheets', show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
   });
   sheetWin.loadFile(path.join(__dirname, '..', 'sheet', 'sheet.html'));
+  sheetPinApplied = null;
+  applySheetPin();
   sheetWin.once('ready-to-show', () => sheetWin && sheetWin.show());
   let t = null;
   const save = () => {
@@ -982,10 +984,20 @@ function openSheetWindow() {
   sheetWin.on('closed', () => { sheetWin = null; });
   sheetTick(true);
 }
+// Pinned: the same level as the overlay ('screen-saver'), so a borderless game doesn't cover it. Only applied when the
+// pin really changes: re-applying it on every save made Windows flash the window.
+let sheetPinApplied = null;
+function applySheetPin() {
+  if (!sheetWin || sheetWin.isDestroyed()) return;
+  const on = !!config.data.sheets.win.pin;
+  if (sheetPinApplied === on) return;
+  sheetPinApplied = on;
+  if (on) sheetWin.setAlwaysOnTop(true, 'screen-saver'); else sheetWin.setAlwaysOnTop(false);
+}
 function setSheetPin(on) {
   config.data.sheets.win.pin = !!on;
   config.saveSoon();
-  if (sheetWin && !sheetWin.isDestroyed()) sheetWin.setAlwaysOnTop(!!on);
+  applySheetPin();
   broadcastConfig();
 }
 
@@ -1298,7 +1310,7 @@ function setupIpc() {
     if (patch._replaceLayout) { config.data.layout = { order: [], sizes: {}, hidden: {} }; delete patch._replaceLayout; }
     deepMerge(config.data, patch);
     sanitizeConfig();
-    if (patch.sheets) { setImmediate(() => sheetTick()); if (sheetWin && !sheetWin.isDestroyed()) sheetWin.setAlwaysOnTop(!!config.data.sheets.win.pin); }
+    if (patch.sheets) { setImmediate(() => sheetTick()); applySheetPin(); }
     if (patch.hotkeys) registerHotkeys();
     if (patch.paths) { refreshPaths(); if (iconRefresh) iconRefresh(); }
     if (patch.overlay && 'enabled' in patch.overlay) setOverlayEnabled(config.data.overlay.enabled);
