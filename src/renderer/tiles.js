@@ -17,7 +17,7 @@
   // Map icon as in game: GGG serves only the glyph; the round base in the tier colour is drawn here.
   const mapIc = (zone, t, lg) => { const src = E.iconOf(glyphId(zone)); return src ? `<span class="mapic ${band(t)}${lg ? ' lg' : ''}" aria-hidden="true"><img src="${esc(src)}" alt=""></span>` : ''; };
   const head = (id, name, sub, right = '', nav = true) => {
-    const def = { id, mono: E.CARDS[id] ? E.CARDS[id].mono : id.slice(0, 2).toUpperCase() };
+    const def = { id, mono: E.CARDS[id] ? E.CARDS[id].mono : ({ days: 'MD', fun: 'FS' }[id] || id.slice(0, 2).toUpperCase()) };
     const open = nav ? `<button class="open" data-nav="page:${id}">${name}</button>` : `<span class="open">${name}</span>`;
     return `<div class="ch">${E.logo(def)}<div class="t">${open}${sub ? `<div class="sub ell">${sub}</div>` : ''}</div>${right}</div>`;
   };
@@ -207,6 +207,40 @@
       <div class="dlist">${kv('Levels', t.levelTo != null && t.levelTo > t.levelFrom ? `${t.levelFrom} → ${t.levelTo}` : '–')}${kv('Maps', t.maps)}${kv('Breaks', E.hm(t.breakMs))}${kv('New tiers', t.newTiers)}${kv('Most run', t.mostRun ? `${zoneName(t.mostRun.zone)} ${tier(t.mostRun.tier)} ×${t.mostRun.runs}` : '–')}${kv('Deadliest', t.deadliest ? `${zoneName(t.deadliest.zone)} · ${t.deadliest.deaths}` : 'no deaths', t.deadliest ? 'bad' : '')}</div>`;
   }
 
+  // Maps per league day (05:00 to 05:00): how many, average time, deaths. The last 14 days.
+  function days({ snap }) {
+    const L = snap.league;
+    const all = (L && L.perDay) || [];
+    const total = all.reduce((a, d) => a + d.maps, 0);
+    if (!total) return `${head('days', 'Maps per day', 'this league', '', false)}<div class="sub">Each league day gets a column once you run maps. A day starts at 05:00.</div>`;
+    const shown = all.slice(-14), max = Math.max(...shown.map(d => d.maps), 1);
+    const ms = v => { if (v == null) return '–'; const s2 = Math.round(v / 1000); return `${Math.floor(s2 / 60)}:${String(s2 % 60).padStart(2, '0')}`; };
+    const cols = shown.map(d => {
+      const today = d === all[all.length - 1];
+      const label = `Day ${d.day}${today ? ' (today)' : ''}: ${d.maps} map${d.maps === 1 ? '' : 's'}${d.maps ? `, average ${ms(d.avgMs)}, ${d.deaths} death${d.deaths === 1 ? '' : 's'}` : ''}`;
+      return `<div class="pd-col${today ? ' now' : ''}" role="group" aria-label="${esc(label)}">
+        <b aria-hidden="true">${d.maps || ''}</b>
+        <span class="pd-bar" aria-hidden="true"><i style="height:${Math.round((d.maps / max) * 100)}%"></i></span>
+        <span class="pd-d" aria-hidden="true">D${d.day}</span>
+        <span class="pd-s" aria-hidden="true">${d.maps ? ms(d.avgMs) : ''}</span>
+        <span class="pd-s" aria-hidden="true">${d.maps ? d.deaths + ' †' : ''}</span></div>`;
+    }).join('');
+    return `${head('days', 'Maps per day', `${total} maps over ${all.length} day${all.length === 1 ? '' : 's'}`, '', false)}
+      <div class="pd" style="--n:${shown.length}">${cols}</div>
+      <div class="pd-key sub" aria-hidden="true"><span>bar: maps</span><span>average map time</span><span>† deaths</span></div>`;
+  }
+
+  // One fun fact about your league, a new one every minute.
+  function fun({ snap }) {
+    const f = (snap.league && snap.league.fun) || [];
+    if (!f.length) return `${head('fun', 'League fact', 'changes every minute', '', false)}<div class="sub">Facts about your league show up once you run maps.</div>`;
+    const i = Math.floor(Date.now() / 60000) % f.length;
+    const dots = f.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('');
+    return `${head('fun', 'League fact', `${i + 1} of ${f.length} · changes every minute`, '', false)}
+      <div class="fs"><b>${esc(f[i].text)}</b><span class="sub">${esc(f[i].sub)}</span></div>
+      <div class="fs-dots" aria-hidden="true">${dots}</div>`;
+  }
+
   EX.TILES = {
     poe: { name: 'Path of Exile', wide: true, render: poe },
     wealthy: { name: 'Wealthy Exile', render: wealthy },
@@ -218,8 +252,10 @@
     overlay: { name: 'Overlay', render: overlay },
     apt: { name: 'Awakened PoE Trade', render: apt },
     today: { name: 'Today', render: today },
+    days: { name: 'Maps per day', wide: true, render: days },
+    fun: { name: 'League fact', render: fun },
   };
-  EX.TILE_ORDER = ['poe', 'wealthy', 'ninja', 'maps', 'pob', 'campaign', 'filter', 'overlay', 'apt', 'today'];
+  EX.TILE_ORDER = ['poe', 'wealthy', 'ninja', 'maps', 'pob', 'campaign', 'filter', 'overlay', 'apt', 'today', 'days', 'fun'];
   // The user's order (from Edit layout), limited to these tiles, with any new tile added at its default place.
   EX.tileOrder = cfg => {
     const saved = (cfg.layout.order || []).filter(id => EX.TILES[id]);

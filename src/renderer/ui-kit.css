@@ -448,3 +448,47 @@ html.no-motion .view{animation:none}
 .gp-st{white-space:normal}
 .goal-btn{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left;letter-spacing:inherit;text-transform:inherit;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .goal-btn:hover,.goal-btn:focus-visible{color:var(--tx);text-decoration:underline;text-underline-offset:3px}
+
+/* cheat sheets page */
+.cs-grid{display:grid;grid-template-columns:minmax(220px,280px) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.cs-grid{grid-template-columns:1fr}}
+.cs-sheets{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.cs-sheets li{display:flex;align-items:center;gap:6px;border-radius:8px}
+.cs-sheets li.on{background:var(--hover);box-shadow:inset 3px 0 0 var(--acc)}
+.cs-pick{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;background:none;border:0;color:inherit;font:inherit;text-align:left;padding:8px 10px;cursor:pointer;border-radius:8px}
+.cs-pick b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.cs-pick:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.cs-mv{display:flex;gap:2px;flex:none;padding-right:6px}
+.cs-set{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 14px;margin-bottom:10px}
+.cs-add{position:relative;margin-bottom:12px}
+.cs-res{max-height:300px;margin-top:6px}
+.cs-res li[aria-disabled="true"]{opacity:.55;cursor:default}
+.cs-tbl{width:100%;border-collapse:collapse}
+.cs-tbl th{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+.cs-tbl td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.cs-tbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cs-ic{width:40px}
+.cs-ic img{max-width:32px;max-height:32px;display:block}
+.cs-nm b{display:block;font-weight:600}
+.cs-ov{width:110px}
+.cs-act{white-space:nowrap;text-align:right}
+.cs-act .btn{margin-left:2px}
+.sh-noimg{width:18px;height:18px;border-radius:50%;background:var(--line2);display:block}
+
+/* maps per day */
+.pd{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));gap:6px;align-items:start;margin-top:4px}
+.pd-col{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;font-variant-numeric:tabular-nums}
+.pd-col b{font-size:13px;font-weight:600;height:16px}
+.pd-bar{width:100%;max-width:34px;height:84px;display:flex;align-items:flex-end;background:color-mix(in srgb,var(--tx) 5%,transparent);border-radius:4px;overflow:hidden}
+.pd-bar i{display:block;width:100%;background:color-mix(in srgb,var(--live) 70%,transparent);border-radius:4px 4px 0 0;min-height:2px}
+.pd-col.now .pd-bar i{background:var(--live)}
+.pd-d{font-size:11px;font-weight:600;color:var(--tx2)}
+.pd-col.now .pd-d{color:var(--tx)}
+.pd-s{font-size:11px;line-height:15px;height:15px;color:var(--tx3);white-space:nowrap}
+.pd-key{display:flex;gap:14px;justify-content:flex-end;margin-top:8px;font-size:11px}
+/* league fact */
+.fs{display:flex;flex-direction:column;gap:6px;justify-content:center;flex:1;min-height:110px}
+.fs b{font-size:20px;font-weight:600;line-height:1.25}
+.fs-dots{display:flex;gap:5px;justify-content:center;flex-wrap:wrap}
+.fs-dots i{width:6px;height:6px;border-radius:50%;background:var(--line2)}
+.fs-dots i.on{background:var(--live)}

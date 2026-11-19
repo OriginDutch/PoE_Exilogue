@@ -6,6 +6,14 @@
 const BASE = 'https://poe.ninja/poe1/api';
 const CDN = 'https://web.poecdn.com';
 const ITEM_TYPES = ['UniqueAccessory', 'UniqueArmour', 'UniqueWeapon', 'UniqueJewel', 'UniqueFlask', 'UniqueRelic', 'UniqueMap'];
+// Cheat sheets: categories priced through poe.ninja's exchange (stackables) and through item listings.
+// Left out on purpose: gems, base types, Viscera, Valdo maps, cluster jewels (tens of thousands of lines each).
+const EXCHANGE_TYPES = ['Currency', 'Fragment', 'Thread', 'Oil', 'Essence', 'Fossil', 'Resonator', 'DeliriumOrb', 'Omen',
+  'Tattoo', 'DivinationCard', 'Artifact', 'AllflameEmber', 'Runegraft', 'Ducat', 'EnshroudingCrystal', 'Astrolabe'];
+const SHEET_ITEM_TYPES = ['UniqueAccessory', 'UniqueArmour', 'UniqueWeapon', 'UniqueJewel', 'UniqueFlask', 'UniqueRelic', 'UniqueMap',
+  'Map', 'BlightedMap', 'BlightRavagedMap', 'Beast', 'Invitation', 'Wombgift', 'ScryingOrb', 'Corpse'];
+const SHEET_TYPES = [...EXCHANGE_TYPES, ...SHEET_ITEM_TYPES];
+const SHEET_MAX_AGE = 15 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
 const RETRY = 10 * 60 * 1000;          // after a network error
 const RETRY_NOT_FOUND = 6 * HOUR;      // the goal name isn't on poe.ninja (or a typo)
@@ -28,6 +36,15 @@ function shortLeague(full, leagues) {
   const pick = (leagues || []).filter(l => l && l.name && /hardcore/i.test(l.name) === hc && !/^(standard|hardcore)$/i.test(l.name))
     .find(l => f.includes(l.name.toLowerCase().replace(/^hardcore\s+/, '')));
   return pick ? pick.name : full;
+}
+
+// Run fn over items with at most `limit` running at once; results in order.
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i], i); } };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
 }
 
 // A goal as given: a plain name (older settings) or { name, id, type }. id = poe.ninja's detailsId of one exact line.
@@ -74,10 +91,10 @@ class NinjaPrice {
   }
 
   // One download per category at a time (a search typed during the first load shares it), cached an hour.
-  _items(league, type) {
+  _items(league, type, maxAge = HOUR) {
     const key = `${league}|${type}`;
     const c = this.items[type];
-    if (c && c.key === key && Date.now() - c.at < HOUR) return Promise.resolve(c.lines);
+    if (c && c.key === key && Date.now() - c.at < maxAge) return Promise.resolve(c.lines);
     this.loading = this.loading || new Map();
     if (this.loading.has(key)) return this.loading.get(key);
     const p = this._loadItems(league, type, key).finally(() => this.loading.delete(key));
@@ -95,6 +112,45 @@ class NinjaPrice {
     }));
     this.items[type] = { key, at: Date.now(), lines };
     return lines;
+  }
+
+  // Stackables (currency, threads, oils …) from poe.ninja's exchange overview. Value in chaos.
+  _exchange(league, type, maxAge = SHEET_MAX_AGE) {
+    const key = `${league}|ex:${type}`;
+    this.ex = this.ex || {};
+    const c = this.ex[type];
+    if (c && c.key === key && Date.now() - c.at < maxAge) return Promise.resolve(c.lines);
+    this.loading = this.loading || new Map();
+    if (this.loading.has(key)) return this.loading.get(key);
+    const p = this._loadExchange(league, type, key).finally(() => this.loading.delete(key));
+    this.loading.set(key, p);
+    return p;
+  }
+  async _loadExchange(league, type, key) {
+    const j = await this._json(`${BASE}/economy/exchange/current/overview?league=${encodeURIComponent(league)}&type=${type}`);
+    const core = (j && j.core) || {};
+    const items = [...(Array.isArray(core.items) ? core.items : []), ...(Array.isArray(j && j.items) ? j.items : [])];
+    const byId = new Map(items.filter(i => i && i.id).map(i => [i.id, i]));
+    // Values are in core.primary; chaos is what poe.ninja uses for PoE 1 (convert if that ever changes).
+    const toChaos = v => {
+      if (!Number.isFinite(v)) return null;
+      if (!core.primary || core.primary === 'chaos') return v;
+      const r = core.rates && Number(core.rates.chaos);
+      return r > 0 ? v * r : null;
+    };
+    const lines = [];
+    for (const l of Array.isArray(j && j.lines) ? j.lines : []) {
+      const it = l && byId.get(l.id);
+      if (!it || typeof it.name !== 'string' || typeof l.id !== 'string') continue;
+      const ch = l.sparkline && Number(l.sparkline.totalChange);
+      lines.push({ id: l.id.slice(0, 120), type, name: it.name.slice(0, 100), variant: null, base: null, links: 0, relic: false,
+        chaos: toChaos(Number(l.primaryValue)), icon: httpsOnly(abs(it.image)), change: Number.isFinite(ch) ? ch : null });
+    }
+    this.ex[type] = { key, at: Date.now(), lines };
+    return lines;
+  }
+  _sheetLines(league, type, maxAge) {
+    return EXCHANGE_TYPES.includes(type) ? this._exchange(league, type, maxAge) : this._items(league, type, maxAge);
   }
 
   async _currency(league) {
@@ -174,6 +230,60 @@ class NinjaPrice {
   }
 
   // Everything due, one request after another. Never throws.
+  // ---- cheat sheets ----
+  // Search every sheet category; every word must match name, variant or base. Name matches first.
+  async sheetSearch(fullLeague, query, limit = 50) {
+    const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6);
+    if (!words.length) return { items: [], partial: false };
+    const league = await this._league(fullLeague);
+    // At most 4 downloads at a time (the first search loads ~30 lists; all at once risks poe.ninja's rate limit).
+    const parts = await mapLimit(SHEET_TYPES, 4, async type => {
+      const key = `${league}|${type}`;
+      if (!this._can('sheetS:' + type, key)) return null;
+      try { return await this._sheetLines(league, type, HOUR); } catch { this._fail('sheetS:' + type, key, 60e3); return null; }
+    });
+    const partial = parts.some(x => x === null);
+    const all = parts.filter(Boolean).flat();
+    if (!all.length && partial) throw new Error('poe.ninja not reachable');
+    const q = words.join(' ');
+    const hits = [];
+    for (const l of all) {
+      if (!l.id) continue;
+      const name = l.name.toLowerCase();
+      const hay = `${name} ${(l.variant || '').toLowerCase()} ${(l.base || '').toLowerCase()} ${l.links ? l.links + 'l' : ''} ${l.relic ? 'relic' : ''}`;
+      if (!words.every(w => hay.includes(w))) continue;
+      const rank = name === q ? 0 : name.startsWith(q) ? 1 : name.split(/\s+/).some(w => w.startsWith(words[0])) ? 2 : 3;
+      hits.push({ rank, l });
+    }
+    hits.sort((a, b) => a.rank - b.rank || a.l.name.localeCompare(b.l.name) || (b.l.chaos || 0) - (a.l.chaos || 0));
+    return { partial, items: hits.slice(0, limit).map(({ l }) => ({ type: l.type, id: l.id, name: l.name, label: lineLabel(l), base: l.base, chaos: l.chaos, icon: l.icon })) };
+  }
+
+  // Current prices for the items in your sheets: refs [{ type, id }]. Only the categories in use are loaded
+  // (each at most every 15 minutes). Returns { prices: { 'type:id': {…} }, at, failed: [types that couldn't load] }.
+  // The caller keeps its older prices for failed types.
+  async sheetPrices(fullLeague, refs) {
+    const league = await this._league(fullLeague);
+    const types = [...new Set(refs.map(r => r.type).filter(t => SHEET_TYPES.includes(t)))];
+    const prices = {}, failed = [];
+    let at = 0;
+    for (const type of types) {
+      const key = `${league}|${type}`;
+      if (!this._can('sheetP:' + type, key)) { failed.push(type); continue; }
+      let lines;
+      try { lines = await this._sheetLines(league, type, SHEET_MAX_AGE); } catch { this._fail('sheetP:' + type, key, 2 * 60e3); failed.push(type); continue; }
+      const c = EXCHANGE_TYPES.includes(type) ? this.ex[type] : this.items[type];
+      at = Math.max(at, (c && c.at) || 0);
+      const byId = new Map(lines.map(l => [l.id, l]));
+      for (const r of refs) if (r.type === type) {
+        const l = byId.get(r.id);
+        // A 0 or missing price is no price (a ratio against 0 means nothing).
+        if (l) prices[`${type}:${r.id}`] = { chaos: l.chaos > 0 ? l.chaos : null, icon: l.icon, name: l.name, label: lineLabel(l) };
+      }
+    }
+    return { prices, at, failed, partial: failed.length > 0 };
+  }
+
   async refresh(fullLeague, goalIn) {
     if (this.busy) return;
     this.busy = true;
@@ -210,4 +320,4 @@ class NinjaPrice {
   }
 }
 
-module.exports = { NinjaPrice, shortLeague, normGoal, goalKey, ITEM_TYPES };
+module.exports = { NinjaPrice, shortLeague, normGoal, goalKey, ITEM_TYPES, SHEET_TYPES, EXCHANGE_TYPES };

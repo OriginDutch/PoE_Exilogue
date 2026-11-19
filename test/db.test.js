@@ -175,3 +175,21 @@ test('db: saving the same maps twice (retried save) stores them once', () => {
   assert.equal(db.load().maps.length, 1);
   db.close();
 });
+
+test('db: deaths in maps per hour of the day (campaign deaths and older ones left out, pending counted)', () => {
+  const db = new LeagueDb(tmp());
+  const at = (h, m) => new Date(2026, 10, 15, h, m).getTime();
+  db.commit({ pending: { events: [
+    { seq: 1, t: at(1, 10), type: 'death', char: 'A', tier: 16 },
+    { seq: 2, t: at(1, 50), type: 'death', char: 'A', tier: 14 },
+    { seq: 3, t: at(1, 55), type: 'death', char: 'A', tier: null },          // in the campaign
+    { seq: 4, t: at(22, 5), type: 'death', char: 'A', tier: 16 },
+    { seq: 5, t: new Date(2026, 10, 1, 1, 0).getTime(), type: 'death', char: 'A', tier: 16 }, // before `since`
+    { seq: 6, t: at(1, 20), type: 'level', char: 'A', level: 90 },
+  ], maps: [] } });
+  const h = db.deathHours(new Date(2026, 10, 13).getTime(), [{ seq: 7, t: at(22, 30), type: 'death', tier: 15 }]);
+  assert.equal(h[1], 2);
+  assert.equal(h[22], 2);
+  assert.equal(h.reduce((a, b) => a + b, 0), 4);
+  db.close();
+});

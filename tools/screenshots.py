@@ -11,7 +11,7 @@ base_cfg = {
   "hotkeys": {"toggleOverlay": "Ctrl+Alt+T", "unlockOverlay": "Ctrl+Alt+L", "focusDashboard": "Ctrl+Alt+J"},
   "ui": {"theme": "system", "darkPalette": "night", "lightPalette": "paper", "font": "source", "motion": True, "sidebarCollapsed": False, "welcomeDone": True},
   "layout": {"order": ["poe","maps","campaign","wealthy","overlay","filter","pob","apt","ninja","trade","goal","today","fate","threads"], "sizes": {}, "hidden": {}},
-  "breaks": {"enabled": True, "campaign": True, "everyMin": 60, "sound": {"on": True, "volume": 50}}, "goal": {"name": "Mageblood", "id": "mageblood-4-flasks-heavy-belt", "type": "UniqueAccessory", "label": "4 Flasks", "divines": None},
+  "breaks": {"enabled": True, "campaign": True, "everyMin": 60, "sound": {"on": True, "volume": 50}},  "sheets": {"list": [{"id": "a1", "name": "Blight-strat", "unit": "chaos", "view": "ratio", "stack": 10, "sort": "manual", "items": [{"type": "Thread", "id": "abyss-thread", "name": "Abyss Thread", "label": "", "override": None, "view": None},{"type": "Thread", "id": "legion-thread", "name": "Legion Thread", "label": "", "override": None, "view": None},{"type": "Thread", "id": "blight-thread", "name": "Blight Thread", "label": "", "override": 2.7, "view": None},{"type": "Thread", "id": "bestiary-thread", "name": "Bestiary Thread", "label": "", "override": None, "view": None},{"type": "Thread", "id": "ultimatum-thread", "name": "Ultimatum Thread", "label": "", "override": None, "view": None},{"type": "Thread", "id": "breach-thread", "name": "Breach Thread", "label": "", "override": None, "view": None},{"type": "Thread", "id": "betrayal-thread", "name": "Betrayal Thread", "label": "", "override": None, "view": None},{"type": "Thread", "id": "incursion-thread", "name": "Incursion Thread", "label": "", "override": None, "view": None},{"type": "Thread", "id": "expedition-thread", "name": "Expedition Thread", "label": "", "override": None, "view": None},{"type": "Thread", "id": "ritual-thread", "name": "Ritual Thread", "label": "", "override": None, "view": None}]}, {"id": "b2", "name": "Oils", "unit": "chaos", "view": "each", "stack": 10, "sort": "value", "items": []}], "active": "a1", "seeded": True, "win": {"x": None, "y": None, "w": 440, "h": 600, "pin": False}}, "goal": {"name": "Mageblood", "id": "mageblood-4-flasks-heavy-belt", "type": "UniqueAccessory", "label": "4 Flasks", "divines": None},
   "launch": {"pob": True, "apt": True, "we": True, "custom": [{"id": "c1", "name": "Sidekick", "target": "C:\\Tools\\Sidekick.exe", "on": False}]}, "weSync": {"background": True, "everyMin": 30},
   "window": {}, "neversink": {}, "systemDark": True, "overlayUnlocked": False, "platform": "win32"}
 cache = {}
@@ -31,6 +31,9 @@ if (window.__SNAP.stats) { const n = window.__SNAP.now;
   window.__SNAP.paths.aptExe = true;
   if (window.__SNAP.neversink && window.__SNAP.neversink.latest) window.__SNAP.neversink.latest.notes = ['Currency tiers rebalanced for 3.30','Added styles for the new Coven items','Omens moved to their own tier list','Fixed Divination Card colours','Strictness levels retuned'];
   window.__SNAP.divRate = window.__SNAP.divRate || {divines: 1.3, perHour: 0.41};
+  window.__SNAP.league = window.__SNAP.league || {perDay:[{day:1,maps:3,avgMs:262000,deaths:1},{day:2,maps:18,avgMs:241000,deaths:6},{day:3,maps:0,avgMs:null,deaths:0},{day:4,maps:39,avgMs:211000,deaths:13},{day:5,maps:44,avgMs:205000,deaths:5},{day:6,maps:22,avgMs:198000,deaths:2}].map(d=>({...d,date:n})),
+    fun:[{text:'18 h 40 min inside maps',sub:'over 126 maps this league'},{text:'Graveyard took 7 of your lives',sub:'the map you died in most'}]};
+  window.__SNAP.sheets = window.__SNAP.sheets || {prices:{'Thread:abyss-thread':{chaos:3.5},'Thread:legion-thread':{chaos:3.12},'Thread:blight-thread':{chaos:1.42},'Thread:bestiary-thread':{chaos:1.57},'Thread:ultimatum-thread':{chaos:2.14},'Thread:breach-thread':{chaos:0.3555},'Thread:betrayal-thread':{chaos:0.282},'Thread:incursion-thread':{chaos:0.2183},'Thread:expedition-thread':{chaos:0.2198},'Thread:ritual-thread':{chaos:0.6211}}, at:n-300000, partial:false, divineChaos:151, iconIds:{}};
   window.__SNAP.goal = window.__SNAP.goal || {name:'Mageblood', label:'4 Flasks', art:'goal-mageblood', price:107, source:'ninja', at:n, change:-2};
   window.__SNAP.mostRun = {zone:'Strand Map', tier:14, runs:11};
   window.__SNAP.today = window.__SNAP.today || {from:n-8*3600e3, firstAt:n-4*3600e3, sessions:2, levelFrom:83, levelTo:86, breakMs:24*60e3, newTiers:2, maps:23, deaths:3, mostRun:{zone:'Strand Map', tier:14, runs:5}, deadliest:{zone:'Tower Map', tier:13, deaths:2}};
@@ -60,6 +63,7 @@ def cfg(**kw):
     return c
 shots = [
   ('01-home', 'mapping', 'home', {}, (1440, 1000), None),
+  ('01b-home-tall', 'mapping', 'home', {}, (1440, 1420), None),
   ('01b-home-wide', 'mapping', 'home', {}, (2400, 1300), None),
   ('02-home-leveling', 'leveling', 'home', {}, (1440, 1240), None),
   ('03-home-light-compact', 'mapping', 'home', {'ui__theme':'light','ui__sidebarCollapsed':True,'ui__font':'bahnschrift'}, (900, 760), None),
@@ -73,6 +77,7 @@ shots = [
   ('11-page-campaign-run', 'leveling', 'page:campaign', {}, (1440, 1200), None),
   ('12-page-campaign-done', 'mapping', 'page:campaign', {}, (1440, 1200), None),
   ('13-page-overlay', 'mapping', 'page:overlay', {}, (1440, 1000), None),
+  ('13b-page-sheets', 'mapping', 'page:sheets', {}, (1440, 1000), None),
   ('14-page-filter', 'mapping', 'page:filter', {}, (1440, 820), None),
   ('15-events', 'mapping', 'events', {}, (1440, 1300), None),
   ('16-settings-appearance', 'mapping', 'settings', {}, (1440, 1200), None),

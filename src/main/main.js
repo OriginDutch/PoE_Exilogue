@@ -8,7 +8,7 @@ const { JsonStore, deepMerge } = require('./store');
 const { LeagueDb, checkFile } = require('./db');
 const { IconStore } = require('./icons');
 const { Wealth } = require('./wealth');
-const { NinjaPrice, ITEM_TYPES: NINJA_TYPES } = require('./ninja');
+const { NinjaPrice, ITEM_TYPES: NINJA_TYPES, SHEET_TYPES } = require('./ninja');
 const { shouldSync, WeSyncServer } = require('./wesync');
 const { lastBuild } = require('./pob');
 const { LogWatcher } = require('./logwatcher');
@@ -18,7 +18,7 @@ const { Tracker, freshState } = require('../core/tracker');
 const APP_NAME = 'Exilogue';
 app.setName(APP_NAME);
 
-const CARD_IDS = ['poe', 'maps', 'campaign', 'wealthy', 'overlay', 'filter', 'pob', 'apt', 'ninja', 'trade', 'goal', 'today', 'fate', 'threads'];
+const CARD_IDS = ['poe', 'maps', 'campaign', 'wealthy', 'overlay', 'filter', 'pob', 'apt', 'ninja', 'trade', 'goal', 'today', 'fate', 'threads', 'days', 'fun'];
 const SIZES = ['xs', 's', 'm', 'l', 'xl'];
 
 const DEFAULT_CONFIG = {
@@ -48,6 +48,8 @@ const DEFAULT_CONFIG = {
   breaks: { enabled: true, campaign: true, everyMin: 60, sound: { on: false, volume: 50, file: 'chime' } },
   // Home goal: an item to save for. Price from poe.ninja; `divines` is the fixed fallback when it isn't found.
   goal: { name: 'Mageblood', id: null, type: null, label: '', divines: null },
+  // Cheat sheets: your own lists of items with poe.ninja prices (or your own). seeded: the first example sheet was made once.
+  sheets: { list: [], active: null, seeded: false, win: { x: null, y: null, w: 440, h: 600, pin: false } },
   ui: {
     theme: 'system',      // system | dark | light
     darkPalette: 'night', // night | spectral | silver
@@ -107,6 +109,7 @@ function sanitizeConfig() {
   c.goal.id = c.goal.name && typeof c.goal.id === 'string' && /^[a-z0-9-]{1,120}$/.test(c.goal.id) ? c.goal.id : null;
   c.goal.type = c.goal.id && NINJA_TYPES.includes(c.goal.type) ? c.goal.type : null;
   c.goal.label = c.goal.id ? String(c.goal.label || '').slice(0, 80) : '';
+  sanitizeSheets(c);
   c.weSync.everyMin = Math.min(180, Math.max(15, Math.round(Number(c.weSync.everyMin) || 30)));
   c.launch.custom = (Array.isArray(c.launch.custom) ? c.launch.custom : []).filter(x => x && typeof x.target === 'string' && x.target.trim()).slice(0, 20)
     .map((x, i) => ({ id: String(x.id || 'c' + Date.now().toString(36) + i).slice(0, 40), name: String(x.name || '').slice(0, 60) || path.basename(x.target.trim()).replace(/\.exe$/i, ''), target: x.target.trim().slice(0, 500), on: x.on !== false }));
@@ -371,10 +374,12 @@ function snapshot() {
     breakPrompt,
     goal: goalInfo(),
     prices: pricesInfo(ws),
+    sheets: sheetsInfo(),
     apt: aptInfo(),
     pobBuild,
     today: todayStats(),
     mostRun: mostRunLeague(),
+    league: leagueStats(),
     update: updateState,
   };
 }
@@ -385,11 +390,11 @@ const sentKey = new Map(); // webContents id -> data key last sent
 const hiddenWc = new Set(); // windows whose page reports it can't be seen (covered by the game, etc.)
 let lastIdleTick = 0;
 function statusKey() {
-  return JSON.stringify([gen, updateState, breakPrompt && [breakPrompt.shownAt, breakPrompt.revealed], ninja.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [(weManualTick(), wealth.rev), wealth.lastError, wealthSyncAt, weBgSyncAt, weManualExpiredAt, weFailAt, Math.floor(weScriptSeenAt / 300000)] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, overlayUnlocked,
+  return JSON.stringify([gen, updateState, breakPrompt && [breakPrompt.shownAt, breakPrompt.revealed], ninja.rev, sheetCache.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [(weManualTick(), wealth.rev), wealth.lastError, wealthSyncAt, weBgSyncAt, weManualExpiredAt, weFailAt, Math.floor(weScriptSeenAt / 300000)] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, overlayUnlocked,
     profileStatus, neversinkLatest, config.data.neversink, pathsCache, leagueDb && leagueDb.corruptFile]);
 }
 function broadcast() {
-  const wins = [dashWin, overlayWin].filter(w => w && !w.isDestroyed() && w.isVisible() && !w.isMinimized() && !hiddenWc.has(w.webContents.id));
+  const wins = [dashWin, overlayWin, sheetWin].filter(w => w && !w.isDestroyed() && w.isVisible() && !w.isMinimized() && !hiddenWc.has(w.webContents.id));
   if (!wins.length) return;
   const key = statusKey();
   const now = Date.now();
@@ -415,7 +420,7 @@ function effectiveConfig() {
 
 function broadcastConfig() {
   const c = effectiveConfig();
-  for (const w of [dashWin, overlayWin]) if (w && !w.isDestroyed()) w.webContents.send('config', c);
+  for (const w of [dashWin, overlayWin, sheetWin]) if (w && !w.isDestroyed()) w.webContents.send('config', c);
 }
 
 // ---------- NeverSink release check (GitHub, public) ----------
@@ -844,6 +849,146 @@ const goalArtId = g => {
   return slug.slice(0, 50) + '-' + h.toString(36).slice(0, 7);
 };
 const GLYPH = n => `https://web.poecdn.com/image/Art/2DItems/Maps/Atlas2Maps/New/${n}.png`;
+// ---------- cheat sheets ----------
+const SHEET_VIEWS = ['ratio', 'each', 'stack'];
+const sheetId = () => Math.random().toString(36).slice(2, 10);
+const num = (v, lo, hi, d) => { const n = v === null || v === '' ? NaN : Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+function sanitizeSheets(c) {
+  const sh = c.sheets && typeof c.sheets === 'object' && !Array.isArray(c.sheets) ? c.sheets : {};
+  const list = Array.isArray(sh.list) ? sh.list : [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of list.slice(0, 60)) {
+    if (!raw || typeof raw !== 'object') continue;
+    let id = typeof raw.id === 'string' && /^[a-z0-9]{1,24}$/.test(raw.id) ? raw.id : sheetId();
+    if (seen.has(id)) id = sheetId();
+    seen.add(id);
+    const items = [];
+    const keys = new Set();
+    for (const it of Array.isArray(raw.items) ? raw.items.slice(0, 80) : []) {
+      if (!it || !SHEET_TYPES.includes(it.type) || typeof it.id !== 'string' || !/^[a-z0-9-]{1,120}$/.test(it.id)) continue;
+      const k = it.type + ':' + it.id;
+      if (keys.has(k)) continue;
+      keys.add(k);
+      items.push({
+        type: it.type, id: it.id, name: String(it.name || it.id).slice(0, 100), label: String(it.label || '').slice(0, 80),
+        override: it.override == null || it.override === '' ? null : num(it.override, 0.0001, 1e7, null),
+        view: SHEET_VIEWS.includes(it.view) ? it.view : null,
+      });
+    }
+    out.push({
+      id, name: String(raw.name || 'Sheet').trim().slice(0, 40) || 'Sheet',
+      unit: raw.unit === 'divine' ? 'divine' : 'chaos',
+      view: SHEET_VIEWS.includes(raw.view) ? raw.view : 'ratio',
+      stack: Math.round(num(raw.stack, 1, 1000, 10)),
+      sort: raw.sort === 'value' ? 'value' : 'manual',
+      items,
+    });
+  }
+  const w = sh.win && typeof sh.win === 'object' ? sh.win : {};
+  c.sheets = {
+    list: out,
+    active: out.some(x => x.id === sh.active) ? sh.active : (out[0] ? out[0].id : null),
+    seeded: !!sh.seeded,
+    win: { x: Number.isFinite(w.x) ? Math.round(w.x) : null, y: Number.isFinite(w.y) ? Math.round(w.y) : null,
+      w: Math.round(num(w.w, 280, 3000, 440)), h: Math.round(num(w.h, 200, 3000, 600)), pin: !!w.pin },
+  };
+}
+// The first time: one example sheet with the threads, an ordinary sheet you can change or delete (never comes back).
+function seedSheets() {
+  if (config.data.sheets.seeded) return;
+  const T = ['abyss', 'legion', 'blight', 'bestiary', 'ultimatum', 'breach', 'betrayal', 'incursion', 'expedition', 'ritual'];
+  const cap = x => x[0].toUpperCase() + x.slice(1);
+  config.data.sheets.list.push({ id: sheetId(), name: 'Blight-strat', unit: 'chaos', view: 'ratio', stack: 10, sort: 'manual',
+    items: T.map(t => ({ type: 'Thread', id: t + '-thread', name: cap(t) + ' Thread', label: '', override: null, view: null })) });
+  config.data.sheets.seeded = true;
+  sanitizeConfig();
+  config.save();
+}
+const sheetIconId = (type, id) => {
+  let h = 5381; for (const ch of type + ':' + id) h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0;
+  return 'cs-' + h.toString(36);
+};
+let sheetWin = null;
+let sheetCache = { prices: {}, at: 0, partial: false, complete: false, rev: 0, busy: false, again: false, lastTry: 0, sig: '' };
+const sheetRefs = () => {
+  const m = new Map();
+  for (const sh of config.data.sheets.list) for (const it of sh.items) m.set(it.type + ':' + it.id, { type: it.type, id: it.id });
+  return [...m.values()];
+};
+// Prices for every item in your sheets; due every 15 min while the sheet window or the dashboard is open, after 2 min
+// when some categories failed, and right away when the items or the league changed (sig).
+async function sheetTick(force) {
+  if (sheetCache.busy) { sheetCache.again = true; return; } // run once more as soon as this round is done
+  const refs = sheetRefs();
+  const sig = config.data.league.name + '#' + refs.map(r => r.type + ':' + r.id).sort().join('|');
+  const open = (sheetWin && !sheetWin.isDestroyed() && sheetWin.isVisible()) || (dashWin && !dashWin.isDestroyed() && dashWin.isVisible() && !dashWin.isMinimized());
+  if (!refs.length || (!open && !force)) return;
+  const wait = sheetCache.partial ? 2 * 60e3 : 15 * 60e3;
+  const leagueChanged = !sheetCache.sig.startsWith(config.data.league.name + '#');
+  if (!(force || sig !== sheetCache.sig || Date.now() - sheetCache.lastTry > wait)) return;
+  sheetCache.busy = true; sheetCache.lastTry = Date.now();
+  try {
+    const r = await ninja.sheetPrices(config.data.league.name, refs);
+    // Keep the older prices of categories that failed this time (unless the league changed: those are another league's).
+    const prices = {};
+    const failed = new Set(r.failed);
+    if (!leagueChanged) for (const [k, v] of Object.entries(sheetCache.prices)) if (failed.has(k.split(':')[0])) prices[k] = v;
+    Object.assign(prices, r.prices);
+    const ok = r.at > 0;
+    sheetCache = { ...sheetCache, prices, sig, partial: r.partial, at: ok ? r.at : (leagueChanged ? 0 : sheetCache.at),
+      complete: ok && !r.partial, rev: sheetCache.rev + 1 };
+    broadcast();
+    if (typeof iconRefresh === 'function') iconRefresh(); // pictures of newly added items right away, not within the minute
+  } catch { sheetCache.partial = true; sheetCache.complete = false; } finally {
+    sheetCache.busy = false;
+    if (sheetCache.again) { sheetCache.again = false; setImmediate(() => sheetTick()); }
+  }
+}
+function sheetsInfo() {
+  const icon = it => (sheetCache.prices[it.type + ':' + it.id] || {}).icon;
+  return { prices: sheetCache.prices, at: sheetCache.at, partial: sheetCache.partial, divineChaos: (ninja.currency && ninja.currency.divineChaos) || null,
+    iconIds: Object.fromEntries(sheetRefs().filter(icon).map(r => [r.type + ':' + r.id, sheetIconId(r.type, r.id)])) };
+}
+function openSheetWindow() {
+  if (sheetWin && !sheetWin.isDestroyed()) { if (sheetWin.isMinimized()) sheetWin.restore(); sheetWin.show(); sheetWin.focus(); return; }
+  const w = config.data.sheets.win;
+  // Only reuse the saved spot if it is still on a screen (a monitor may be gone).
+  let pos = {};
+  if (w.x != null && w.y != null) {
+    const r = { x: w.x, y: w.y, width: w.w, height: w.h };
+    const d = screen.getDisplayMatching(r).workArea;
+    if (r.x < d.x + d.width - 60 && r.x + r.width > d.x + 60 && r.y >= d.y - 10 && r.y < d.y + d.height - 60) pos = { x: w.x, y: w.y };
+  }
+  sheetWin = new BrowserWindow({
+    width: w.w, height: w.h, ...pos, minWidth: 280, minHeight: 200,
+    frame: false, backgroundColor: '#0a0f18', title: APP_NAME + ' · Cheat sheets', show: false, alwaysOnTop: w.pin,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
+  });
+  sheetWin.loadFile(path.join(__dirname, '..', 'sheet', 'sheet.html'));
+  sheetWin.once('ready-to-show', () => sheetWin && sheetWin.show());
+  let t = null;
+  const save = () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      if (!sheetWin || sheetWin.isDestroyed() || sheetWin.isMinimized() || sheetWin.isMaximized()) return;
+      const b = sheetWin.getBounds();
+      Object.assign(config.data.sheets.win, { x: b.x, y: b.y, w: b.width, h: b.height });
+      config.saveSoon();
+    }, 400);
+  };
+  sheetWin.on('move', save);
+  sheetWin.on('resize', save);
+  sheetWin.on('closed', () => { sheetWin = null; });
+  sheetTick(true);
+}
+function setSheetPin(on) {
+  config.data.sheets.win.pin = !!on;
+  config.saveSoon();
+  if (sheetWin && !sheetWin.isDestroyed()) sheetWin.setAlwaysOnTop(!!on);
+  broadcastConfig();
+}
+
 function iconExtras() {
   const out = [];
   const c = ninja.currency;
@@ -860,6 +1005,12 @@ function iconExtras() {
     for (let i = tracker.maps.length - 1; i >= 0 && names.size < 12; i--) names.add(glyphName(tracker.maps[i].zone || tracker.maps[i].areaId));
   }
   for (const n of names) if (n) out.push({ id: 'map-' + n.toLowerCase(), url: GLYPH(n) });
+  // Cheat-sheet item pictures (downloaded for at most 300 items; see sheetKeep for which ones the cache keeps).
+  let n = 0;
+  for (const r of sheetRefs()) {
+    const p = sheetCache.prices[r.type + ':' + r.id];
+    if (p && p.icon && n++ < 300) out.push({ id: sheetIconId(r.type, r.id), url: p.icon });
+  }
   return out;
 }
 
@@ -870,6 +1021,72 @@ function todayStart(now = Date.now()) {
   if (d.getTime() > now) d.setDate(d.getDate() - 1);
   return d.getTime();
 }
+// ---------- league stats for the "Maps per day" and fun-stat tiles ----------
+// Recomputed only when a map was added (cached on the number of maps and the league start).
+let leagueStatsCache = { key: '', v: null };
+function leagueStats() {
+  if (!tracker) return null;
+  const key = tracker.maps.length + '|' + config.data.league.start + '|' + todayStart(); // a new day shows up at 05:00, map or not
+  if (leagueStatsCache.key === key) return leagueStatsCache.v;
+  const maps = tracker.maps.filter(m => m && m.end && m.start);
+  const ls = leagueStartMs();
+  const day0 = todayStart(ls || (maps[0] && maps[0].start) || Date.now());
+  // Days run from 05:00 to 05:00, like "Today"; day 1 is the league's first day.
+  // Rounded: around a clock change a day is 23 or 25 hours long.
+  const dayOf = t => Math.round((todayStart(t) - day0) / 86400e3) + 1;
+  const days = new Map();
+  for (const m of maps) {
+    const d = dayOf(m.end);
+    if (d < 1) continue;
+    const g = days.get(d) || { day: d, maps: 0, ms: 0, deaths: 0 };
+    g.maps++; g.ms += m.activeMs || 0; g.deaths += m.deaths || 0;
+    days.set(d, g);
+  }
+  const lastDay = Math.max(dayOf(Date.now()), ...days.keys(), 1);
+  const perDay = [];
+  for (let d = 1; d <= lastDay; d++) {
+    const g = days.get(d) || { day: d, maps: 0, ms: 0, deaths: 0 };
+    perDay.push({ day: d, date: day0 + (d - 1) * 86400e3 + 12 * 3600e3, maps: g.maps, avgMs: g.maps ? Math.round(g.ms / g.maps) : null, deaths: g.deaths });
+  }
+  // Fun facts: neutral, from your maps only. Each { text, sub } (text may hold a zone name: the renderer escapes it).
+  const fun = [];
+  if (maps.length) {
+    const total = maps.reduce((a, m) => a + (m.activeMs || 0), 0);
+    const zone = m => m.zone || m.areaId || 'a map';
+    const longest = maps.reduce((a, m) => ((m.activeMs || 0) > (a.activeMs || 0) ? m : a));
+    const timed = maps.filter(m => (m.activeMs || 0) >= 30e3);
+    const quickest = timed.length ? timed.reduce((a, m) => (m.activeMs < a.activeMs ? m : a)) : null;
+    const zones = new Set(maps.map(zone));
+    const deaths = maps.reduce((a, m) => a + (m.deaths || 0), 0);
+    let streak = 0, best = 0;
+    for (const m of maps) { if (m.deaths) streak = 0; else best = Math.max(best, ++streak); }
+    // The real time of each death in a map (from the event log), per hour of the day.
+    let byHour = null;
+    try { byHour = leagueDb ? leagueDb.deathHours(ls || 0, tracker.pending ? tracker.pending.events || [] : []) : null; } catch { byHour = null; }
+    const h = byHour ? byHour.indexOf(Math.max(...byHour)) : -1;
+    const busiest = perDay.reduce((a, d) => (d.maps > a.maps ? d : a), perDay[0]);
+    const by = new Map();
+    for (const m of maps) { const k = zone(m); by.set(k, (by.get(k) || 0) + (m.deaths || 0)); }
+    const deadliest = [...by].sort((a, b) => b[1] - a[1])[0];
+    const hm = ms => { const mins = Math.round(ms / 60000); return mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`; };
+    const ms = v => { const sec = Math.round(v / 1000); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
+    fun.push({ text: `${hm(total)} inside maps`, sub: `over ${maps.length} maps this league` });
+    fun.push({ text: `${zones.size} different maps`, sub: 'run at least once this league' });
+    fun.push({ text: `Longest map: ${zone(longest)}`, sub: `${ms(longest.activeMs || 0)}${longest.tier ? ' · T' + longest.tier : ''}` });
+    if (quickest) fun.push({ text: `Quickest map: ${zone(quickest)}`, sub: `${ms(quickest.activeMs)}${quickest.tier ? ' · T' + quickest.tier : ''}` });
+    if (busiest && busiest.maps) fun.push({ text: `Day ${busiest.day} was your busiest`, sub: `${busiest.maps} maps that day` });
+    fun.push({ text: `${best} maps in a row without dying`, sub: 'your longest streak this league' });
+    if (deaths) {
+      const rate = maps.length / deaths;
+      fun.push({ text: `${deaths} deaths in maps`, sub: rate >= 1.5 ? `about one every ${Math.round(rate)} maps` : `about ${(deaths / maps.length).toFixed(1)} per map` });
+      if (byHour && byHour[h] > 0) fun.push({ text: `Most deaths between ${String(h).padStart(2, '0')}:00 and ${String((h + 1) % 24).padStart(2, '0')}:00`, sub: `${byHour[h]} death${byHour[h] === 1 ? '' : 's'} in maps in that hour of the day` });
+      if (deadliest && deadliest[1]) fun.push({ text: `${deadliest[0]} took ${deadliest[1]} of your lives`, sub: 'the map you died in most' });
+    } else fun.push({ text: 'Not a single death in a map yet', sub: `${maps.length} maps clean` });
+  }
+  leagueStatsCache = { key, v: { perDay, fun } };
+  return leagueStatsCache.v;
+}
+
 function todayStats() {
   if (!tracker) return null;
   const from = todayStart();
@@ -1081,6 +1298,7 @@ function setupIpc() {
     if (patch._replaceLayout) { config.data.layout = { order: [], sizes: {}, hidden: {} }; delete patch._replaceLayout; }
     deepMerge(config.data, patch);
     sanitizeConfig();
+    if (patch.sheets) { setImmediate(() => sheetTick()); if (sheetWin && !sheetWin.isDestroyed()) sheetWin.setAlwaysOnTop(!!config.data.sheets.win.pin); }
     if (patch.hotkeys) registerHotkeys();
     if (patch.paths) { refreshPaths(); if (iconRefresh) iconRefresh(); }
     if (patch.overlay && 'enabled' in patch.overlay) setOverlayEnabled(config.data.overlay.enabled);
@@ -1192,9 +1410,18 @@ function setupIpc() {
   ipcMain.on('overlay:boundsDone', saveOverlayBounds);
   ipcMain.handle('overlay:bounds', () => (overlayWin ? overlayWin.getBounds() : null));
   // Window chrome
-  ipcMain.on('win:min', () => dashWin && dashWin.minimize());
-  ipcMain.on('win:max', () => dashWin && (dashWin.isMaximized() ? dashWin.unmaximize() : dashWin.maximize()));
-  ipcMain.on('win:close', () => dashWin && dashWin.close());
+  // Title-bar buttons act on the window they are in (dashboard or cheat-sheet window).
+  const ownWin = e => BrowserWindow.fromWebContents(e.sender);
+  ipcMain.on('win:min', e => { const w = ownWin(e); if (w) w.minimize(); });
+  ipcMain.on('win:max', e => { const w = ownWin(e); if (w && w === dashWin) w.isMaximized() ? w.unmaximize() : w.maximize(); });
+  ipcMain.on('win:close', e => { const w = ownWin(e); if (w) w.close(); });
+  ipcMain.handle('sheet:open', () => { openSheetWindow(); return true; });
+  ipcMain.handle('sheet:pin', (_e, on) => { setSheetPin(on); return true; });
+  ipcMain.handle('sheet:search', async (_e, q) => {
+    try { const r = await ninja.sheetSearch(config.data.league.name, String(q || '').slice(0, 80)); return { ok: true, items: r.items, partial: r.partial }; }
+    catch { return { ok: false, error: 'Could not load the item lists from poe.ninja. Try again in a minute.' }; }
+  });
+  ipcMain.handle('sheet:refresh', () => sheetTick(true));
   ipcMain.handle('win:state', () => ({ maximized: !!(dashWin && dashWin.isMaximized()) }));
 }
 
@@ -1221,6 +1448,7 @@ app.whenReady().then(() => {
   if (soundMigrate) { config.data.breaks.sound = { on: true, volume: 50, file: 'shrine' }; } // Marcel's pick for his own install
   sanitizeConfig();
   if (soundMigrate) config.save();
+  seedSheets();
   leagueDb = new LeagueDb(path.join(dir, 'league.db'));
   if (!config.data.io.since) { config.data.io.since = Date.now(); config.save(); }
   const legacy = path.join(dir, 'state.json');
@@ -1250,6 +1478,7 @@ app.whenReady().then(() => {
   setTimeout(() => checkApt().catch(() => {}), 4000);
   // poe.ninja: divine price and icons for everyone, goal price when a goal is set (each refreshes at most hourly).
   const ninjaTick = () => ninja.refresh(config.data.league.name, config.data.goal).catch(() => {});
+  setInterval(() => sheetTick(), 60e3); // checks every minute; fetches only when due (15 min) or items changed
   setTimeout(ninjaTick, 3000);
   setInterval(ninjaTick, 5 * 60 * 1000);
   setInterval(() => flushLeague({ force: false }), FLUSH_MS);
@@ -1268,7 +1497,7 @@ app.whenReady().then(() => {
     onChange: () => {},
   });
   // Cheap when nothing is due (no network, no writes); fetches only what is missing or older than 30 days.
-  const refreshIcons = () => icons.refresh({ poeExe: config.data.paths.poeExe, pobExe: config.data.paths.pobExe, aptExe: config.data.paths.aptExe, mapName: bestMapName(), extra: iconExtras() }).catch(() => {});
+  const refreshIcons = () => icons.refresh({ poeExe: config.data.paths.poeExe, pobExe: config.data.paths.pobExe, aptExe: config.data.paths.aptExe, mapName: bestMapName(), extra: iconExtras(), sheetsKnown: sheetCache.complete, sheetKeep: sheetRefs().map(r => sheetIconId(r.type, r.id)) }).catch(() => {});
   // New art to fetch (a new map in the recent list, poe.ninja icons that just arrived): checked every minute, fetched once.
   let extrasSeen = '';
   setInterval(() => { const sig = JSON.stringify(iconExtras()); if (sig !== extrasSeen) { extrasSeen = sig; refreshIcons(); } }, 60 * 1000);

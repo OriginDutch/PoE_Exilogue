@@ -127,3 +127,35 @@ test('ninja: the goal search shares downloads and backs off after a failure', as
   await assert.rejects(n.search('Covens of Umbra', 'mage')); // still waiting out the failure
   assert.equal(calls, 7);
 });
+
+test('ninja: cheat-sheet search spans exchange and item categories; prices only for categories in use', async () => {
+  const seen = [];
+  const fetch = async url => {
+    if (url.endsWith('/data/index-state')) return resp(INDEX);
+    seen.push(url.replace(/^.*\/economy\//, ''));
+    if (url.includes('exchange/current/overview') && url.includes('type=Thread')) return resp({
+      core: { primary: 'chaos', rates: { divine: 0.0066 } },
+      items: [{ id: 'abyss-thread', name: 'Abyss Thread', image: '/gen/image/x/AbyssThread.png' }, { id: 'ritual-thread', name: 'Ritual Thread', image: '/gen/image/y/RitualThread.png' }],
+      lines: [{ id: 'abyss-thread', primaryValue: 3.5, sparkline: { totalChange: 5 } }, { id: 'ritual-thread', primaryValue: 0.62 }],
+    });
+    if (url.includes('exchange/current/overview')) return resp({ core: { primary: 'chaos' }, items: [], lines: [] });
+    if (url.includes('type=BlightedMap')) return resp({ lines: [{ name: 'Blighted Toxic Sewer Map', baseType: 'Toxic Sewer Map', chaosValue: 4, icon: PLAIN, detailsId: 'blighted-toxic-sewer-map-t16' }] });
+    return resp({ lines: [] });
+  };
+  const n = new NinjaPrice({ fetch, userAgent: 't' });
+  const r = await n.sheetSearch('Covens of Umbra', 'thread');
+  assert.deepEqual(r.items.map(x => x.name), ['Abyss Thread', 'Ritual Thread']);
+  assert.equal(r.items[0].type, 'Thread');
+  assert.equal(r.items[0].icon, 'https://web.poecdn.com/gen/image/x/AbyssThread.png');
+  assert.equal(r.partial, false);
+  assert.equal((await n.sheetSearch('Covens of Umbra', 'toxic sewer')).items[0].type, 'BlightedMap');
+
+  // Prices: a fresh NinjaPrice only loads the Thread category for a Thread-only sheet.
+  const seen2 = [];
+  const n2 = new NinjaPrice({ fetch: async u => { if (!u.endsWith('index-state')) seen2.push(u); return fetch(u); }, userAgent: 't' });
+  const p = await n2.sheetPrices('Covens of Umbra', [{ type: 'Thread', id: 'abyss-thread' }, { type: 'Thread', id: 'gone-thread' }]);
+  assert.equal(p.prices['Thread:abyss-thread'].chaos, 3.5);
+  assert.equal(p.prices['Thread:gone-thread'], undefined);
+  assert.equal(seen2.length, 1);
+  assert.ok(seen2[0].includes('type=Thread'));
+});

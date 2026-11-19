@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'">
+  <title>Exilogue · Cheat sheets</title>
+  <link rel="stylesheet" href="../../node_modules/@fontsource/cinzel/500.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/cinzel/600.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/source-sans-3/400.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/source-sans-3/500.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/source-sans-3/600.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/inter/400.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/inter/500.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/inter/600.css">
+  <link rel="stylesheet" href="../renderer/ui-kit.css">
+  <link rel="stylesheet" href="sheet.css">
+</head>
+<body>
+  <div class="app win t-night" id="app">
+    <header class="titlebar sh-bar">
+      <nav class="sh-tabs" role="tablist" aria-label="Cheat sheets"></nav>
+      <div class="wctl">
+        <button data-act="pin" class="sh-pin" aria-pressed="false" title="Always on top"></button>
+        <button data-win="min" aria-label="Minimize"></button>
+        <button data-win="close" class="x" aria-label="Close"></button>
+      </div>
+    </header>
+    <main class="sh-body" id="body" role="tabpanel"></main>
+    <footer class="sh-foot" id="foot"></footer>
+  </div>
+  <script src="../renderer/util.js"></script>
+  <script src="sheet.js"></script>
+</body>
+</html>

@@ -19,6 +19,7 @@
     render(true);
     return true;
   }
+  EX.save = save; // for page modules with their own handlers (cheat sheets)
 
   // ---------- theme / font / motion ----------
   function applyConfig(c) {
@@ -38,7 +39,7 @@
   }
 
   // ---------- sidebar ----------
-  const TOOLS = [['poe', 'PE', 'Path of Exile'], ['maps', 'SM', 'Session &amp; Maps'], ['campaign', 'CP', 'Campaign'], ['overlay', 'OV', 'Overlay'], ['filter', 'LF', 'Loot filter'], ['pob', 'PB', 'Path of Building']];
+  const TOOLS = [['poe', 'PE', 'Path of Exile'], ['maps', 'SM', 'Session &amp; Maps'], ['campaign', 'CP', 'Campaign'], ['overlay', 'OV', 'Overlay'], ['filter', 'LF', 'Loot filter'], ['pob', 'PB', 'Path of Building'], ['sheets', 'CS', 'Cheat sheets']];
   const LINKS = [['wealthy', 'WE', 'Wealthy Exile', 'https://wealthyexile.com'], ['ninja', 'PN', 'poe.ninja', 'https://poe.ninja'], ['trade', 'TR', 'Trade', 'https://www.pathofexile.com/trade']];
   const SOON = [['fate', 'FL', 'Fate Logger'], ['threads', 'TT', 'Threads Tracker']];
 

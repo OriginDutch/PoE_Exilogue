@@ -245,7 +245,13 @@ class IconStore {
       }
       // Map glyphs and goal art pile up as you play other maps or change goals: keep the newest 40, delete the rest.
       const extra = Object.entries(this.index).filter(([id]) => /^(map|goal)-/.test(id)).sort((a, b) => (b[1].at || 0) - (a[1].at || 0));
-      for (const [id, e] of extra.slice(40)) {
+      const drop = extra.slice(40).map(([id]) => id);
+      // Cheat-sheet icons: only those of items still in a sheet (the app passes them all as extra).
+      const wanted = new Set([...(ctx.extra || []).map(x => x && x.id), ...(ctx.sheetKeep || [])]);
+      // (Only once the sheet prices are known: before that the list is empty and everything would be thrown away.)
+      if (ctx.sheetsKnown) for (const id of Object.keys(this.index)) if (/^cs-/.test(id) && !wanted.has(id)) drop.push(id);
+      for (const id of drop) {
+        const e = this.index[id];
         try { fs.unlinkSync(path.join(this.dir, e.file)); } catch { /* gone */ }
         delete this.index[id]; this.dirty = true; changed = true;
       }

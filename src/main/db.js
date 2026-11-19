@@ -161,6 +161,15 @@ class LeagueDb {
 
   // Events for the Events page, newest first. pending = events not committed yet (merged in).
   // filter: { char: name | 'all', types: [type] | null, limit, before: seq, after: seq }
+  // Deaths inside maps (the death event has a tier then) per hour of the day, since `since` (ms). 24 counts.
+  deathHours(since, pending = []) {
+    const out = new Array(24).fill(0);
+    const add = t => { out[new Date(t).getHours()]++; };
+    for (const r of this.db.prepare("SELECT t FROM events WHERE type = 'death' AND t >= ? AND json_extract(data, '$.tier') IS NOT NULL").all(since)) add(r.t);
+    for (const e of pending) if (e && e.type === 'death' && e.t >= since && e.tier != null) add(e.t);
+    return out;
+  }
+
   events({ char = 'all', types = null, limit = 200, before = null, after = null } = {}, pending = []) {
     const base = [], args = [];
     if (char !== 'all') { base.push('char = ?'); args.push(char); }
