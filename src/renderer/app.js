@@ -194,6 +194,18 @@
     motion: () => save({ ui: { motion: !state.cfg.ui.motion } }),
     'maps-all': async () => { ui.showAllMaps = !ui.showAllMaps; if (ui.showAllMaps) ui.allMaps = await ej.allMaps(); render(true); },
     'profile-check': async () => { await ej.checkProfile(); state.snap = await ej.snapshot(); render(true); },
+    // Built-in Wealthy Exile (test)
+    'we-open': () => ej.weOpen(),
+    'we-test': async () => {
+      ui.weTesting = true; ui.weTest = null; render(true);
+      const r = await ej.weTest();
+      ui.weTesting = false; ui.weTest = r || { ok: false, step: 'no-answer', log: [] }; render(true);
+      if (r && r.ok) E.toast('Built-in Wealthy Exile: exported ✓', { kind: 'ok' }); else E.toastError('Built-in Wealthy Exile stopped: ' + ((r && r.step) || 'unknown'));
+    },
+    'we-logout': async () => {
+      if (!(await E.confirm({ title: 'Forget the Wealthy Exile login?', body: 'Only for the built-in window. Your browser stays logged in.', ok: 'Forget login' }))) return;
+      await ej.weLogout(); ui.weTest = null; render(true); E.toast('Built-in Wealthy Exile login forgotten.');
+    },
     'goal-pick': async () => {
       if (ui.editing) return;
       const g = state.cfg.goal;
