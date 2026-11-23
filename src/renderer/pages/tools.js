@@ -223,6 +223,9 @@
           <span class="sub" style="flex:none;min-width:4.5ch;overflow:visible;text-align:right;font-variant-numeric:tabular-nums">${snd.volume}%</span>
           <button class="btn q sm" data-act="brk-sound-test" ${snd.on ? '' : 'disabled'}>Test</button></div>
         ${E.note('Never in a map: it asks about 3 seconds after you reach your hideout or a town, and stays until you enter the next zone. A minute without mouse or keyboard counts as a break by itself.')}</section>
+      <section class="box"><div class="bh"><h2>Essence upgrades</h2>${E.sw(cfg.essences.enabled, 'Essence upgrade overlay', 'ess-toggle')}</div>
+        <div class="row between"><span class="muted">Show / hide</span>${cfg.hotkeys.essenceOverlay ? E.kbd(cfg.hotkeys.essenceOverlay) : '<button class="btn q sm" data-nav="settings:hotkeys">Set a hotkey</button>'}</div>
+        ${E.note('Open your essence stash tab and press the hotkey. Green: worth upgrading (3 → 1 of the next tier is worth at least 3×, chains included). Red: not worth it. With the profit per row and in total. Counts come from your newest Wealthy Exile export, prices from poe.ninja.')}</section>
       <section class="box"><h2>Overlay text</h2>
         <div class="field"><label class="lbl" for="ovf">Font</label><select id="ovf" class="select" data-ovfont>${fonts.map(([v, l]) => `<option value="${v}" ${o.font === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         <div class="field"><span class="lbl" id="ovs-l">Size</span><div role="radiogroup" aria-labelledby="ovs-l" class="seg" style="align-self:flex-start">

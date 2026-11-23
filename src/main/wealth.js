@@ -213,6 +213,24 @@ class Wealth {
     return out;
   }
 
+  // Every line of the newest export still on disk (the archive keeps the newest KEEP_FILES CSVs), for the essence
+  // overlay: the database only keeps totals. → { at, items: [{ name, tab, qty, total }] } or null.
+  latestItems() {
+    let files = [];
+    try {
+      files = fs.readdirSync(this.archive).filter(n => NAME.test(n))
+        .map(n => ({ f: path.join(this.archive, n), t: fs.statSync(path.join(this.archive, n)).mtimeMs })).sort((a, b) => b.t - a.t);
+    } catch { return null; }
+    for (const { f, t } of files) {
+      try {
+        const buf = fs.readFileSync(f);
+        this.read += buf.length;
+        return { at: Math.round(t), items: readExport(buf.toString('utf8')).items };
+      } catch { /* unreadable: try the one before it */ }
+    }
+    return null;
+  }
+
   latestAt() { const r = this.db.prepare('SELECT MAX(t) t FROM exports').get(); return (r && r.t) || 0; }
 
   // Wealth change over a play session, from the exports around it.

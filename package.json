@@ -5,7 +5,7 @@
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/tracker.test.js test/db.test.js test/logwatcher.test.js test/icons.test.js test/wealth.test.js test/ninja.test.js test/wesync.test.js test/pob.test.js",
+    "test": "node --test test/tracker.test.js test/db.test.js test/logwatcher.test.js test/icons.test.js test/wealth.test.js test/ninja.test.js test/wesync.test.js test/pob.test.js test/essences.test.js",
     "mockups": "python3 tools/screenshots.py",
     "package": "electron-packager . Exilogue --platform=win32 --arch=x64 --out=dist --overwrite --ignore=^/mockups --ignore=^/tools --ignore=^/test --ignore=^/dist --ignore=^/build",
     "dist": "electron-builder --win nsis --x64 --publish never"

@@ -159,6 +159,7 @@
     play: async () => { const r = await ej.launch('poe'); if (!r.ok) E.toastError(r.error); },
     pob: async () => { const r = await ej.launch('pob'); if (!r.ok) E.toastError(r.error); },
     'ov-toggle': () => save({ overlay: { enabled: !state.cfg.overlay.enabled } }),
+    'ess-toggle': () => save({ essences: { enabled: !state.cfg.essences.enabled } }),
     'launch-pob': () => save({ launch: { pob: !state.cfg.launch.pob } }),
     'launch-apt': () => save({ launch: { apt: !state.cfg.launch.apt } }),
     'launch-we': () => save({ launch: { we: !state.cfg.launch.we } }),

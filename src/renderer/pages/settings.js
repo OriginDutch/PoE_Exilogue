@@ -127,6 +127,7 @@
       row('unlockOverlay', 'Unlock overlay', 'Unlock to drag and resize the overlay; press again to lock.') +
       row('focusDashboard', 'Focus Exilogue', 'Bring this window to the front.') +
       row('breakTaken', 'I took a break', 'Answers "Take a break?" with yes, or marks a break you took yourself.') +
+      row('essenceOverlay', 'Essence upgrade overlay', 'Open your essence stash tab and press it: marks what is worth upgrading. Press again to hide.') +
       `<div class="note" style="margin-top:14px">${ic.info()}<span>Numpad keys and F13–F24 work on their own (handy for macro keys; numpad needs Num Lock on). Other keys need Ctrl, Alt or Shift, so normal typing stays free. A hotkey here is taken from the game while Exilogue runs.</span></div>`;
   }
 

@@ -8,6 +8,7 @@ const { JsonStore, deepMerge } = require('./store');
 const { LeagueDb, checkFile } = require('./db');
 const { IconStore } = require('./icons');
 const { Wealth } = require('./wealth');
+const essences = require('../core/essences');
 const { NinjaPrice, ITEM_TYPES: NINJA_TYPES, SHEET_TYPES } = require('./ninja');
 const { EdgeWe } = require('./edge');
 const { shouldSync, WeSyncServer } = require('./wesync');
@@ -43,7 +44,9 @@ const DEFAULT_CONFIG = {
     font: 'app',        // app | source | bahnschrift | inter | segoe
     show: { zone: true, map: true, campaign: false, splits: false, session: true },
   },
-  hotkeys: { toggleOverlay: 'Ctrl+Alt+T', unlockOverlay: 'Ctrl+Alt+L', focusDashboard: 'Ctrl+Alt+J', breakTaken: '' },
+  hotkeys: { toggleOverlay: 'Ctrl+Alt+T', unlockOverlay: 'Ctrl+Alt+L', focusDashboard: 'Ctrl+Alt+J', breakTaken: '', essenceOverlay: '' },
+  // Essence upgrade overlay over the essence stash tab, shown with its hotkey (enabled = the hotkey works).
+  essences: { enabled: true },
   // "Take a break?": asked after `everyMin` of play, ~10 s after leaving a map (or entering a town in the campaign).
   // sound: a short chime when "Take a break?" shows. Off for new installs; existing installs get it on once (see startup).
   breaks: { enabled: true, campaign: true, everyMin: 60, sound: { on: false, volume: 50, file: 'chime' } },
@@ -87,6 +90,7 @@ const GAME_POLL_MS = 2000;    // while the game runs: is its process still there
 const GAME_SEARCH_MS = 60 * 1000; // while it doesn't: look for it this often (the log's game-start line also triggers a look)
 const KEEP_BACKUPS = 10;
 let dashWin = null, overlayWin = null, overlayUnlocked = false;
+let essWin = null, essShown = false;
 let gameRunning = false, caughtUp = false, catchup = null, logMissing = false;
 let neversinkLatest = null;
 let hotkeyStatus = {};
@@ -116,6 +120,8 @@ function sanitizeConfig() {
     .map((x, i) => ({ id: String(x.id || 'c' + Date.now().toString(36) + i).slice(0, 40), name: String(x.name || '').slice(0, 60) || path.basename(x.target.trim()).replace(/\.exe$/i, ''), target: x.target.trim().slice(0, 500), on: x.on !== false }));
   { const d = parseFloat(String(c.goal.divines ?? '').replace(',', '.')); c.goal.divines = Number.isFinite(d) && d > 0 ? d : null; }
   if (!['s', 'm', 'l'].includes(c.overlay.size)) c.overlay.size = 'm';
+  c.essences = { enabled: !(c.essences && c.essences.enabled === false) };
+  if (typeof c.hotkeys.essenceOverlay !== 'string') c.hotkeys.essenceOverlay = '';
   // v0.6 Home is a new layout: an order from the old tile grid is replaced once by the new default.
   if (c.layout.v !== 6) { c.layout.order = ['poe', 'wealthy', 'ninja', 'maps', 'pob', 'campaign', 'filter', 'overlay', 'apt', 'today']; c.layout.v = 6; }
   const order = (c.layout.order || []).filter(id => CARD_IDS.includes(id));
@@ -201,6 +207,7 @@ function setOverlayEnabled(on) {
 
 // The overlay only sits over the game while the game runs (or while unlocked, to place it).
 function updateOverlayVisibility() {
+  if (essShown && !gameRunning) hideEssences();
   if (!overlayWin || overlayWin.isDestroyed()) return;
   const show = overlayUnlocked || (config.data.overlay.enabled && gameRunning);
   if (show && !overlayWin.isVisible()) overlayWin.showInactive();
@@ -479,12 +486,54 @@ function refreshProfileSoon() {
   profileSoon = setTimeout(() => { profileSoon = null; profileLast = Date.now(); checkProfile(); }, wait);
 }
 
+// ---------- essence upgrade overlay ----------
+// A click-through window over the whole display the game is on. Computed once per press from the newest
+// Wealthy Exile export (counts) and poe.ninja (prices); it doesn't follow what you click.
+function hideEssences() {
+  essShown = false;
+  if (essWin && !essWin.isDestroyed()) essWin.hide();
+}
+
+async function toggleEssences() {
+  if (essShown) return hideEssences();
+  if (!config.data.essences.enabled) return;
+  const disp = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const b = disp.bounds, sf = disp.scaleFactor || 1;
+  if (!essWin || essWin.isDestroyed()) {
+    essWin = new BrowserWindow({
+      ...b, frame: false, transparent: true, resizable: false, skipTaskbar: true, focusable: false,
+      alwaysOnTop: true, hasShadow: false, show: false,
+      webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
+    });
+    essWin.setAlwaysOnTop(true, 'screen-saver');
+    essWin.setIgnoreMouseEvents(true);
+    await essWin.loadFile(path.join(__dirname, '..', 'overlay', 'essences.html'));
+  } else essWin.setBounds(b);
+  essShown = true;
+  essWin.webContents.send('essences', { state: 'loading', winScale: sf });
+  essWin.showInactive();
+  essWin.webContents.send('essences', await essencePlan(Math.round(b.height * sf), sf));
+}
+
+// → what the overlay draws; positions are in the game's pixels, the window divides by the Windows scale.
+async function essencePlan(heightPx, sf) {
+  const exp = wealth ? wealth.latestItems() : null;
+  if (!exp || !exp.items.length) return { state: 'error', winScale: sf, at: essences.geometry({ rows: [], total: 0 }, heightPx).total, message: 'No Wealthy Exile export yet' };
+  let pr;
+  try { pr = await ninja.essencePrices(config.data.league.name); }
+  catch { return { state: 'error', winScale: sf, at: essences.geometry({ rows: [], total: 0 }, heightPx).total, message: 'poe.ninja not reachable' }; }
+  const { counts } = essences.essenceCounts(exp.items);
+  const plan = essences.plan(counts, pr.prices);
+  return { state: 'ok', winScale: sf, exportAt: exp.at, pricesAt: pr.at, chaosIcon: pr.chaosIcon, ...essences.geometry(plan, heightPx) };
+}
+
 // ---------- hotkeys ----------
 const HOTKEY_ACTIONS = {
   toggleOverlay: () => setOverlayEnabled(!config.data.overlay.enabled),
   unlockOverlay: () => setOverlayLocked(overlayUnlocked),
   focusDashboard: () => { if (dashWin) { if (dashWin.isMinimized()) dashWin.restore(); dashWin.show(); dashWin.focus(); } },
   breakTaken: () => takeBreak(),
+  essenceOverlay: () => toggleEssences(),
 };
 
 function registerHotkeys() {
@@ -1315,6 +1364,7 @@ function setupIpc() {
     if (patch.hotkeys) registerHotkeys();
     if (patch.paths) { refreshPaths(); if (iconRefresh) iconRefresh(); }
     if (patch.overlay && 'enabled' in patch.overlay) setOverlayEnabled(config.data.overlay.enabled);
+    if (patch.essences && !config.data.essences.enabled) hideEssences();
     // Stats are wiped before the new path/start is saved: a crash in between leaves old stats with the old config.
     if (JSON.stringify([config.data.paths.clientTxt, config.data.league.start]) !== before) resetState();
     config.save();

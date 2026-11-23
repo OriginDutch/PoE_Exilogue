@@ -48,4 +48,5 @@ contextBridge.exposeInMainWorld('ej', {
   onTick: fn => ipcRenderer.on('tick', (_e, t) => fn(t)),
   onConfig: fn => ipcRenderer.on('config', (_e, c) => fn(c)),
   onOverlayUnlocked: fn => ipcRenderer.on('overlay:unlocked', (_e, u) => fn(u)),
+  onEssences: fn => ipcRenderer.on('essences', (_e, d) => fn(d)),
 });

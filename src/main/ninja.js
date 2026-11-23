@@ -284,6 +284,15 @@ class NinjaPrice {
     return { prices, at, failed, partial: failed.length > 0 };
   }
 
+  // Essence prices for the essence overlay: { name: chaos } from the exchange overview (at most 15 minutes old).
+  async essencePrices(fullLeague) {
+    const league = await this._league(fullLeague);
+    const lines = await this._exchange(league, 'Essence', SHEET_MAX_AGE);
+    const prices = {};
+    for (const l of lines) if (l.chaos > 0) prices[l.name] = l.chaos;
+    return { prices, at: (this.ex.Essence && this.ex.Essence.at) || Date.now(), chaosIcon: this.currency && this.currency.icons ? this.currency.icons.chaos : null };
+  }
+
   async refresh(fullLeague, goalIn) {
     if (this.busy) return;
     this.busy = true;

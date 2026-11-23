@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' https://web.poecdn.com">
+  <title>Exilogue essence overlay</title>
+  <link rel="stylesheet" href="../../node_modules/@fontsource/inter/600.css">
+  <link rel="stylesheet" href="../../node_modules/@fontsource/inter/700.css">
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; user-select: none; pointer-events: none; }
+    body { position: relative; font-family: Inter, 'Segoe UI', sans-serif; }
+    .bx { position: absolute; box-sizing: border-box; border-radius: 4px; border-style: solid; }
+    .bx.green { border-color: #4ade80; box-shadow: 0 0 10px rgba(74, 222, 128, .7); }
+    .bx.red { border-color: #f05252; box-shadow: 0 0 10px rgba(240, 82, 82, .7); }
+    .pill { position: absolute; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 3px;
+      background: rgba(8, 10, 14, .9); border: 1px solid #3a4150; color: #e6e8eb; font-weight: 700; white-space: nowrap; }
+    .pill.neg { color: #f8a5a5; }
+    .tot { position: absolute; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 1em;
+      background: rgba(8, 10, 14, .92); border: 2px solid #4ade80; color: #e6e8eb; font-weight: 700; white-space: nowrap;
+      box-shadow: 0 0 12px rgba(74, 222, 128, .5); }
+    .tot .k { font-weight: 600; color: #9aa4b2; font-size: .65em; }
+    .tot.err { border-color: #f59e0b; box-shadow: none; }
+    .ch { display: inline-block; flex: none; }
+    .ch img, .ch svg { width: 100%; height: 100%; display: block; }
+  </style>
+</head>
+<body>
+  <script src="essences.js"></script>
+</body>
+</html>
