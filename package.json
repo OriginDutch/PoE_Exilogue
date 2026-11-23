@@ -1,6 +1,6 @@
 {
   "name": "exilogue",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "description": "Path of Exile league compendium",
   "main": "src/main/main.js",
   "scripts": {

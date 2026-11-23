@@ -195,7 +195,7 @@
     'maps-all': async () => { ui.showAllMaps = !ui.showAllMaps; if (ui.showAllMaps) ui.allMaps = await ej.allMaps(); render(true); },
     'profile-check': async () => { await ej.checkProfile(); state.snap = await ej.snapshot(); render(true); },
     // Wealthy Exile through Edge (test)
-    'we-open': async () => { const r = await ej.weOpen(); ui.weTest = r; render(true); if (r && !r.ok) E.toastError(r.log.join(' ')); },
+    'we-open': async () => { const r = await ej.weOpen(); ui.weTest = null; render(true); if (r && !r.ok) E.toastError(r.log.join(' ')); else E.toast('Edge is open. Log in to Wealthy Exile there, then press "2. Test sync & export".'); },
     'we-test': async () => {
       ui.weTesting = true; ui.weTest = null; render(true);
       const r = await ej.weTest();

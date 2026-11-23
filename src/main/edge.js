@@ -11,6 +11,9 @@ const http = require('http');
 const { pageSync } = require('./wepage');
 
 const HOME = 'https://wealthyexile.com/stash';
+// A tab really on wealthyexile.com (the host, not the URL text: the PoE login URL contains "client_id=wealthyexile").
+const isWeTab = t => { try { return t.type === 'page' && /(^|\.)wealthyexile\.com$/i.test(new URL(t.url).hostname); } catch { return false; } };
+const pickWeTab = list => { const we = list.filter(isWeTab); return we.find(t => /\/stash\b/.test(t.url)) || we[0] || null; };
 
 function findEdge() {
   const roots = [process.env['ProgramFiles(x86)'], process.env.ProgramFiles, process.env.LOCALAPPDATA].filter(Boolean);
@@ -102,12 +105,12 @@ class EdgeWe {
       // Downloads (the CSV) into the folder Exilogue watches, without a "save as" question.
       await cdp(ver.webSocketDebuggerUrl, [{ method: 'Browser.setDownloadBehavior', params: { behavior: 'allow', downloadPath: this.o.downloads } }]);
       const list = await getJson(port, '/json/list');
-      let page = list.find(t => t.type === 'page' && /wealthyexile\.com/i.test(t.url));
+      let page = pickWeTab(list);
       if (!page) {
         log.push('no Wealthy Exile tab: opening one');
         spawn(findEdge(), [`--user-data-dir=${this.o.profileDir}`, HOME], { detached: true, stdio: 'ignore' }).unref();
         await new Promise(r => setTimeout(r, 5000));
-        page = (await getJson(port, '/json/list')).find(t => t.type === 'page' && /wealthyexile\.com/i.test(t.url));
+        page = pickWeTab(await getJson(port, '/json/list'));
         if (!page) return { ok: false, step: 'no-tab', log: [...log, 'could not find the Wealthy Exile tab'] };
       }
       log.push('tab: ' + page.url);
