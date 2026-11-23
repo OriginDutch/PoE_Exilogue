@@ -9,7 +9,7 @@ const { LeagueDb, checkFile } = require('./db');
 const { IconStore } = require('./icons');
 const { Wealth } = require('./wealth');
 const { NinjaPrice, ITEM_TYPES: NINJA_TYPES, SHEET_TYPES } = require('./ninja');
-const { WeBrowser } = require('./wewin');
+const { EdgeWe } = require('./edge');
 const { shouldSync, WeSyncServer } = require('./wesync');
 const { lastBuild } = require('./pob');
 const { LogWatcher } = require('./logwatcher');
@@ -1444,13 +1444,11 @@ function setupIpc() {
     catch { return { ok: false, error: 'Could not load the item lists from poe.ninja. Try again in a minute.' }; }
   });
   ipcMain.handle('sheet:refresh', () => sheetTick(true));
-  // Built-in Wealthy Exile (test): own window and login, no browser or userscript.
-  let weBrowser = null;
-  const weB = () => (weBrowser = weBrowser || new WeBrowser({ downloads: app.getPath('downloads'),
-    onExport: () => { if (wealth) wealth.scan(); } }));
-  ipcMain.handle('we:open', () => { weB().open(); return true; });
-  ipcMain.handle('we:test', () => weB().syncExport({ show: true }));
-  ipcMain.handle('we:logout', async () => { await weB().logout(); return true; });
+  // Wealthy Exile through Edge (test): Edge with its own Exilogue profile, steered over DevTools. No extension.
+  let edgeWe = null;
+  const edgeB = () => (edgeWe = edgeWe || new EdgeWe({ profileDir: path.join(app.getPath('userData'), 'edge-profile'), downloads: app.getPath('downloads') }));
+  ipcMain.handle('we:open', () => edgeB().open());
+  ipcMain.handle('we:test', async () => { const r = await edgeB().syncExport(); if (r.ok && wealth) setTimeout(() => wealth.scan(), 3000); return r; });
   ipcMain.handle('win:state', () => ({ maximized: !!(dashWin && dashWin.isMaximized()) }));
 }
 

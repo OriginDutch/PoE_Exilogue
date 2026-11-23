@@ -103,12 +103,11 @@
           <div class="row between"><span>Sync in the background</span>${E.sw(cfg.weSync.background, 'Sync Wealthy Exile in the background', 'wesync-toggle')}</div>
           <div class="row between"><span class="muted">At most every</span><select class="select" style="width:auto" data-weevery>${[15, 30, 45, 60, 90].map(m => `<option value="${m}" ${cfg.weSync.everyMin === m ? 'selected' : ''}>${m} min</option>`).join('')}</select></div>
           ${script}</div></section>
-      <section class="setrow" style="border-bottom:0"><div><h2>Built-in Wealthy Exile <span class="pill">test</span></h2><p>An experiment: Exilogue opens Wealthy Exile in its own window, so no browser, Tampermonkey or userscript is needed. Log in once in that window (Exilogue keeps the login, separate from your browser), then try a sync and export. The CSV goes to Downloads and is picked up like always.</p></div>
+      <section class="setrow" style="border-bottom:0"><div><h2>Wealthy Exile through Edge <span class="pill">test</span></h2><p>An experiment without Tampermonkey: Exilogue opens Microsoft Edge with its own, separate profile and presses sync and export there. First open Edge and log in to Wealthy Exile yourself (once; your normal browser isn't touched). Keep that Edge window open, then try a sync and export. The CSV goes to Downloads and is picked up like always.</p></div>
         <div style="display:flex;flex-direction:column;gap:10px">
           <div class="row" style="gap:8px;flex-wrap:wrap">
-            <button class="btn" data-act="we-open">Open Wealthy Exile window</button>
-            <button class="btn p" data-act="we-test" ${ui.weTesting ? 'disabled' : ''}>${ui.weTesting ? 'Testing…' : 'Test sync & export'}</button>
-            <button class="btn q" data-act="we-logout">Forget login</button></div>
+            <button class="btn" data-act="we-open">1. Open Edge and log in</button>
+            <button class="btn p" data-act="we-test" ${ui.weTesting ? 'disabled' : ''}>${ui.weTesting ? 'Testing…' : '2. Test sync & export'}</button></div>
           ${ui.weTest ? `<div class="note" role="status"><b>${ui.weTest.ok ? 'Worked ✓' : 'Stopped at: ' + E.esc(ui.weTest.step)}</b>
             <ul class="dnotes" style="margin-top:6px">${ui.weTest.log.map(l => `<li>${E.esc(l)}</li>`).join('')}</ul></div>` : ''}</div></section>`;
   }
