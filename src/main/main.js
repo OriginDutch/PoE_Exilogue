@@ -46,7 +46,8 @@ const DEFAULT_CONFIG = {
   },
   hotkeys: { toggleOverlay: 'Ctrl+Alt+T', unlockOverlay: 'Ctrl+Alt+L', focusDashboard: 'Ctrl+Alt+J', breakTaken: '', essenceOverlay: '' },
   // Essence upgrade overlay over the essence stash tab, shown with its hotkey (enabled = the hotkey works).
-  essences: { enabled: true },
+  // display: the id of the screen the game is on (null = the primary screen).
+  essences: { enabled: true, display: null },
   // "Take a break?": asked after `everyMin` of play, ~10 s after leaving a map (or entering a town in the campaign).
   // sound: a short chime when "Take a break?" shows. Off for new installs; existing installs get it on once (see startup).
   breaks: { enabled: true, campaign: true, everyMin: 60, sound: { on: false, volume: 50, file: 'chime' } },
@@ -120,7 +121,7 @@ function sanitizeConfig() {
     .map((x, i) => ({ id: String(x.id || 'c' + Date.now().toString(36) + i).slice(0, 40), name: String(x.name || '').slice(0, 60) || path.basename(x.target.trim()).replace(/\.exe$/i, ''), target: x.target.trim().slice(0, 500), on: x.on !== false }));
   { const d = parseFloat(String(c.goal.divines ?? '').replace(',', '.')); c.goal.divines = Number.isFinite(d) && d > 0 ? d : null; }
   if (!['s', 'm', 'l'].includes(c.overlay.size)) c.overlay.size = 'm';
-  c.essences = { enabled: !(c.essences && c.essences.enabled === false) };
+  c.essences = { enabled: !(c.essences && c.essences.enabled === false), display: c.essences && Number.isFinite(c.essences.display) ? c.essences.display : null };
   if (typeof c.hotkeys.essenceOverlay !== 'string') c.hotkeys.essenceOverlay = '';
   // v0.6 Home is a new layout: an order from the old tile grid is replaced once by the new default.
   if (c.layout.v !== 6) { c.layout.order = ['poe', 'wealthy', 'ninja', 'maps', 'pob', 'campaign', 'filter', 'overlay', 'apt', 'today']; c.layout.v = 6; }
@@ -373,6 +374,7 @@ function snapshot() {
     neversink: { latest: neversinkLatest, ...config.data.neversink },
     hotkeys: hotkeyStatus,
     overlayUnlocked,
+    displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, n: i + 1, w: Math.round(d.size.width * d.scaleFactor), h: Math.round(d.size.height * d.scaleFactor), primary: d.id === screen.getPrimaryDisplay().id })),
     profileStatus,
     stateCorrupt: leagueDb && leagueDb.corruptFile ? path.basename(leagueDb.corruptFile) : null,
     stats: tracker ? tracker.snapshot(Date.now()) : null,
@@ -498,10 +500,10 @@ let essBusy = false; // a press while the window is still being made or the plan
 async function toggleEssences() {
   if (essBusy) return;
   if (essShown) return hideEssences();
-  if (!config.data.essences.enabled) return;
+  if (!config.data.essences.enabled || !gameRunning) return;
   essBusy = true;
   try {
-    const disp = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const disp = essenceDisplay();
     const b = disp.bounds, sf = disp.scaleFactor || 1;
     if (!essWin || essWin.isDestroyed()) {
       essWin = new BrowserWindow({
@@ -516,12 +518,43 @@ async function toggleEssences() {
     essWin.setBounds(b); // twice: Windows sizes a window wrongly when it lands on a display with other scaling
     essWin.setBounds(b);
     essShown = true;
-    essWin.webContents.send('essences', { state: 'loading' });
+    const hPx = Math.round(b.height * sf);
+    const at = essences.geometry({ rows: [], total: 0 }, hPx).total;
+    const progress = (step, frac) => { if (essShown && essWin && !essWin.isDestroyed()) essWin.webContents.send('essences', { state: 'loading', at, step, frac }); };
+    progress('export', 0);
     essWin.showInactive();
-    const data = await essencePlan(Math.round(b.height * sf));
+    await freshExport(f => progress('export', f));
+    progress('prices', 0.9);
+    const data = await essencePlan(hPx);
     if (essShown && essWin && !essWin.isDestroyed()) essWin.webContents.send('essences', data);
   } catch { hideEssences(); }
   finally { essBusy = false; }
+}
+
+function essenceDisplay() {
+  const all = screen.getAllDisplays();
+  return all.find(d => d.id === config.data.essences.display) || screen.getPrimaryDisplay();
+}
+
+// Counts older than 15 minutes: ask for a new export first, but only through an open Wealthy Exile tab (the
+// userscript syncs in the background). Without one nothing is opened: a browser would pull you out of the game.
+// Gives up after 90 s; the overlay then uses the export it has and says how old it is.
+const ESS_FRESH_MS = 15 * 60e3, ESS_WAIT_MS = 90e3;
+async function freshExport(onProgress) {
+  if (!wealth) return;
+  const before = wealth.latestAt() || 0;
+  if (Date.now() - before < ESS_FRESH_MS) return;
+  const tabOpen = !weForceTab && weScriptSeenAt && Date.now() - weScriptSeenAt < 60e3;
+  const cooldown = wealthSyncAt + WEALTH_SYNC_MS - Date.now() > 0;
+  if (!tabOpen && !cooldown) return;
+  if (!cooldown) { wealthSyncAt = Date.now(); weManualAt = wealthSyncAt; weForceTab = false; weManualTtl = 45e3; }
+  const t0 = Date.now();
+  while (Date.now() - t0 < ESS_WAIT_MS && essShown) {
+    await new Promise(r => setTimeout(r, 1000));
+    wealth.scan(); // the folder watcher may be slow or off
+    if ((wealth.latestAt() || 0) > before) { await new Promise(r => setTimeout(r, 300)); return; }
+    onProgress(Math.min(0.85, (Date.now() - t0) / ESS_WAIT_MS));
+  }
 }
 
 // → what the overlay draws; positions are in the game's pixels, the window divides by its own devicePixelRatio.
@@ -534,7 +567,7 @@ async function essencePlan(heightPx) {
   if (!Object.keys(pr.prices).length) return { state: 'error', at: essences.geometry({ rows: [], total: 0 }, heightPx).total, message: 'No essence prices on poe.ninja for this league' };
   const { counts } = essences.essenceCounts(exp.items);
   const plan = essences.plan(counts, pr.prices);
-  return { state: 'ok', exportAt: exp.at, pricesAt: pr.at, chaosIcon: pr.chaosIcon, ...essences.geometry(plan, heightPx) };
+  return { state: 'ok', stale: Date.now() - exp.at > ESS_FRESH_MS, exportAt: exp.at, pricesAt: pr.at, chaosIcon: pr.chaosIcon, ...essences.geometry(plan, heightPx) };
 }
 
 // ---------- hotkeys ----------

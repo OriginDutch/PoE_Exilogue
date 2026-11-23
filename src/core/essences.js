@@ -2,9 +2,9 @@
 // Essence upgrade overlay: which essences in the essence stash tab are worth upgrading (3 → 1 of the next tier),
 // and where on screen to mark them. Pure: counts and prices in, a plan out.
 //
-// Rule (Marcel, Nov 2026): a step is worth it when one of the next tier is worth at least 3× this tier (≥ 3x).
-// Chains count: if the next tier is itself worth upgrading, its value is what its upgrade gives (a third of the
-// tier above it), so 9 Screaming → 1 Deafening can be green even when Screaming → Shrieking alone is not.
+// Rule (Marcel, Nov 2026): an upgrade is worth it when it gains value with the counts you actually have: one of the
+// next tier at least 3× this tier (≥ 3x), and chains count only when they can really finish (9 Screaming →
+// 1 Deafening is green even when Screaming → Shrieking alone is not; 3 Screaming → 1 Shrieking that can't go on is not).
 // Green = worth it, red = not worth it; a cell with fewer than 3 (after what flows in from below) gets no box.
 // Volume is deliberately ignored: profit is profit.
 
@@ -56,23 +56,36 @@ function plan(counts, prices) {
     const t = def.tiers;
     const p = t.map(tier => price(nameOf(tier, def.type)));
     const q = t.map(tier => Math.max(0, Math.floor(counts[nameOf(tier, def.type)] || 0)));
-    // worth[i]: is tier i → i+1 worth it. value[i]: what one of tier i is worth, upgraded as far as it pays.
-    const worth = new Array(t.length).fill(null);
-    const value = new Array(t.length).fill(null);
-    value[t.length - 1] = p[t.length - 1];
-    for (let i = t.length - 2; i >= 0; i--) {
-      if (p[i] == null || value[i + 1] == null) { value[i] = p[i]; continue; } // no price: no advice for this step
-      worth[i] = value[i + 1] >= RATIO * p[i];
-      value[i] = worth[i] ? value[i + 1] / RATIO : p[i];
+    // Every way to upgrade or not, step by step, run with your real counts (3 → 1, the rest stays); the plan that
+    // ends worth the most wins, a tie goes to upgrading (exactly 3x counts as worth it). So a step is only green when
+    // it pays off with what you have: 3 Screaming → 1 Shrieking that can't go further isn't.
+    const steps = t.length - 1;
+    const known = i => p[i] != null && p[i + 1] != null;
+    const run = mask => {
+      const h = q.slice();
+      const did = new Array(t.length).fill(false);
+      for (let i = 0; i < steps; i++) {
+        if (!(mask & (1 << i)) || !known(i) || h[i] < RATIO) continue;
+        const up = Math.floor(h[i] / RATIO); h[i] -= up * RATIO; h[i + 1] += up; did[i] = true;
+      }
+      let v = 0;
+      for (let i = 0; i < t.length; i++) if (p[i] != null) v += h[i] * p[i];
+      return { h, did, v, n: did.filter(Boolean).length };
+    };
+    let best = run(0);
+    for (let mask = 1; mask < (1 << steps); mask++) {
+      const r = run(mask);
+      if (r.v > best.v + 1e-9 || (Math.abs(r.v - best.v) <= 1e-9 && r.n > best.n)) best = r;
     }
-    // Run it from the bottom up: what flows into a tier can make it 3 or more.
-    const have = q.slice();
+    // Boxes: green where the best plan upgrades; red where you could (3 or more, after what flows in) but it doesn't pay.
     const box = new Array(t.length).fill(null);
-    for (let i = 0; i < t.length - 1; i++) {
-      if (worth[i] == null || have[i] < RATIO) continue;
-      box[i] = worth[i] ? 'green' : 'red';
-      if (worth[i]) { const up = Math.floor(have[i] / RATIO); have[i] -= up * RATIO; have[i + 1] += up; }
-    }
+    { const h = q.slice();
+      for (let i = 0; i < steps; i++) {
+        if (!known(i) || h[i] < RATIO) continue;
+        box[i] = best.did[i] ? 'green' : 'red';
+        if (best.did[i]) { const up = Math.floor(h[i] / RATIO); h[i] -= up * RATIO; h[i + 1] += up; }
+      } }
+    const have = best.h;
     for (let i = 0; i < t.length; i++) if (q[i] > 0 && p[i] == null) missing.add(nameOf(t[i], def.type));
     let profit = 0;
     for (let i = 0; i < t.length; i++) if (p[i] != null) profit += (have[i] - q[i]) * p[i];
@@ -82,7 +95,7 @@ function plan(counts, prices) {
     const col = i => t.length - 1 - i;
     const cells = t.map((tier, i) => ({ tier, col: col(i), qty: q[i], box: box[i] }));
     let label = null;
-    if (box.some(Boolean)) {
+    if (box.includes('green')) { // a row with only red boxes gets no label
       for (let c = 3; c < 7 && label == null; c++) {
         const cell = cells.find(x => x.col === c);
         if (!cell || cell.qty === 0) label = c;

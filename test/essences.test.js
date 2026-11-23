@@ -36,14 +36,21 @@ test('essences: Anguish Screaming is red, Shrieking green', () => {
   assert.equal(box(r, 'Shrieking'), 'green');
 });
 
-test('essences: chain value counts, exactly 3x is enough', () => {
+test('essences: a chain that cannot finish is red, one that can is green', () => {
   const pr = { 'Screaming Essence of Woe': 1, 'Shrieking Essence of Woe': 2, 'Deafening Essence of Woe': 9 };
+  // 3 Screaming → 1 Shrieking, which can't go on: 3c in, 2c out
   const r = row(plan({ 'Screaming Essence of Woe': 3, 'Shrieking Essence of Woe': 0 }, pr), 'Woe');
-  // alone 2x (no), via the chain 9 / 3 = 3 per Shrieking = 3x (yes). 3 Screaming → 1 Shrieking: fewer than 3, no box there
-  assert.equal(box(r, 'Screaming'), 'green');
-  assert.equal(box(r, 'Shrieking'), null);
-  // Known edge (open question for Marcel): the chain can't finish with 1 Shrieking, so this row loses 1c.
-  assert.equal(r.profit, -1);
+  assert.equal(box(r, 'Screaming'), 'red');
+  assert.equal(r.profit, 0);
+  assert.equal(r.label, null);
+  // 9 Screaming → 3 Shrieking → 1 Deafening: 9c in, 9c out (exactly 3x per step on the chain): green
+  const r2 = row(plan({ 'Screaming Essence of Woe': 9, 'Shrieking Essence of Woe': 0 }, pr), 'Woe');
+  assert.equal(box(r2, 'Screaming'), 'green');
+  assert.equal(box(r2, 'Shrieking'), 'green');
+  // 3 Screaming + 2 Shrieking: the 1 that flows in makes 3 → 1 Deafening (9) for 3 + 4 = 7: green
+  const r3 = row(plan({ 'Screaming Essence of Woe': 3, 'Shrieking Essence of Woe': 2 }, pr), 'Woe');
+  assert.equal(box(r3, 'Screaming'), 'green');
+  assert.equal(r3.profit, 2);
 });
 
 test('essences: what flows in can make a tier upgradeable', () => {

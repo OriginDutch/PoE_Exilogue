@@ -5,6 +5,7 @@
   const chaosSvg = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="#d9b45a" stroke-width="1.8"/><path d="M8 3.5a4.5 4.5 0 1 0 4.2 2.9" fill="none" stroke="#d9b45a" stroke-width="1.8" stroke-linecap="round"/></svg>';
   const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const num = v => (Math.round(v * 10) / 10).toString();
+  const ago = t => { const m = Math.max(1, Math.round((Date.now() - t) / 60e3)); return m < 60 ? m + ' min' : m < 48 * 60 ? Math.round(m / 60) + ' h' : Math.round(m / 1440) + ' days'; };
 
   ej.onEssences(d => {
     const k = 1 / (window.devicePixelRatio || 1), px = v => (v * k).toFixed(1) + 'px';
@@ -20,7 +21,13 @@
         html += `<div class="pill${l.profit < 0 ? ' neg' : ''}" style="left:${px(l.x + 2 * s)};top:${px(l.y + (l.size - h) / 2)};width:${px(l.size - 4 * s)};height:${px(h)};border-radius:${px(h / 2)};font-size:${px(fs)}">${txt} ${icon(fs)}</div>`;
       }
       const t = d.total;
-      html += `<div class="tot" style="left:${px(t.x)};top:${px(t.y)};height:${px(t.h)};border-radius:${px(t.h / 2)};font-size:${px(20 * s)}"><span class="k">Total</span>${t.value > 0 ? '+' : ''}${num(t.value)} ${icon(18 * s)}</div>`;
+      const age = d.stale && d.exportAt ? `<span class="k">export ${ago(d.exportAt)} old</span>` : '';
+      html += `<div class="tot${d.stale ? ' err' : ''}" style="left:${px(t.x)};top:${px(t.y)};height:${px(t.h)};border-radius:${px(t.h / 2)};font-size:${px(20 * s)}"><span class="k">Total</span>${t.value > 0 ? '+' : ''}${num(t.value)} ${icon(18 * s)}${age}</div>`;
+    } else if (d.state === 'loading' && d.at) {
+      const t = d.at, w = t.h * 7;
+      const msg = d.step === 'prices' ? 'Getting prices from poe.ninja…' : 'New Wealthy Exile export…';
+      html = `<div class="tot load" style="left:${px(t.x)};top:${px(t.y)};height:${px(t.h)};width:${px(w)};border-radius:${px(t.h / 2)};font-size:${px(t.h * 0.32)}">
+        <span>${msg}</span><span class="bar"><i style="width:${Math.round((d.frac || 0) * 100)}%"></i></span></div>`;
     } else if (d.state === 'error' && d.at) {
       const t = d.at;
       html = `<div class="tot err" style="left:${px(t.x)};top:${px(t.y)};height:${px(t.h)};border-radius:${px(t.h / 2)};font-size:${px(t.h * 0.36)}">${esc(d.message)}</div>`;
