@@ -494,37 +494,47 @@ function hideEssences() {
   if (essWin && !essWin.isDestroyed()) essWin.hide();
 }
 
+let essBusy = false; // a press while the window is still being made or the plan computed is ignored
 async function toggleEssences() {
+  if (essBusy) return;
   if (essShown) return hideEssences();
   if (!config.data.essences.enabled) return;
-  const disp = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  const b = disp.bounds, sf = disp.scaleFactor || 1;
-  if (!essWin || essWin.isDestroyed()) {
-    essWin = new BrowserWindow({
-      ...b, frame: false, transparent: true, resizable: false, skipTaskbar: true, focusable: false,
-      alwaysOnTop: true, hasShadow: false, show: false,
-      webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
-    });
-    essWin.setAlwaysOnTop(true, 'screen-saver');
-    essWin.setIgnoreMouseEvents(true);
-    await essWin.loadFile(path.join(__dirname, '..', 'overlay', 'essences.html'));
-  } else essWin.setBounds(b);
-  essShown = true;
-  essWin.webContents.send('essences', { state: 'loading', winScale: sf });
-  essWin.showInactive();
-  essWin.webContents.send('essences', await essencePlan(Math.round(b.height * sf), sf));
+  essBusy = true;
+  try {
+    const disp = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const b = disp.bounds, sf = disp.scaleFactor || 1;
+    if (!essWin || essWin.isDestroyed()) {
+      essWin = new BrowserWindow({
+        ...b, frame: false, transparent: true, resizable: false, skipTaskbar: true, focusable: false,
+        alwaysOnTop: true, hasShadow: false, show: false,
+        webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
+      });
+      essWin.setAlwaysOnTop(true, 'screen-saver');
+      essWin.setIgnoreMouseEvents(true);
+      await essWin.loadFile(path.join(__dirname, '..', 'overlay', 'essences.html'));
+    }
+    essWin.setBounds(b); // twice: Windows sizes a window wrongly when it lands on a display with other scaling
+    essWin.setBounds(b);
+    essShown = true;
+    essWin.webContents.send('essences', { state: 'loading' });
+    essWin.showInactive();
+    const data = await essencePlan(Math.round(b.height * sf));
+    if (essShown && essWin && !essWin.isDestroyed()) essWin.webContents.send('essences', data);
+  } catch { hideEssences(); }
+  finally { essBusy = false; }
 }
 
-// → what the overlay draws; positions are in the game's pixels, the window divides by the Windows scale.
-async function essencePlan(heightPx, sf) {
+// → what the overlay draws; positions are in the game's pixels, the window divides by its own devicePixelRatio.
+async function essencePlan(heightPx) {
   const exp = wealth ? wealth.latestItems() : null;
-  if (!exp || !exp.items.length) return { state: 'error', winScale: sf, at: essences.geometry({ rows: [], total: 0 }, heightPx).total, message: 'No Wealthy Exile export yet' };
+  if (!exp || !exp.items.length) return { state: 'error', at: essences.geometry({ rows: [], total: 0 }, heightPx).total, message: 'No Wealthy Exile export yet' };
   let pr;
   try { pr = await ninja.essencePrices(config.data.league.name); }
-  catch { return { state: 'error', winScale: sf, at: essences.geometry({ rows: [], total: 0 }, heightPx).total, message: 'poe.ninja not reachable' }; }
+  catch { return { state: 'error', at: essences.geometry({ rows: [], total: 0 }, heightPx).total, message: 'poe.ninja not reachable' }; }
+  if (!Object.keys(pr.prices).length) return { state: 'error', at: essences.geometry({ rows: [], total: 0 }, heightPx).total, message: 'No essence prices on poe.ninja for this league' };
   const { counts } = essences.essenceCounts(exp.items);
   const plan = essences.plan(counts, pr.prices);
-  return { state: 'ok', winScale: sf, exportAt: exp.at, pricesAt: pr.at, chaosIcon: pr.chaosIcon, ...essences.geometry(plan, heightPx) };
+  return { state: 'ok', exportAt: exp.at, pricesAt: pr.at, chaosIcon: pr.chaosIcon, ...essences.geometry(plan, heightPx) };
 }
 
 // ---------- hotkeys ----------
