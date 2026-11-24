@@ -19,7 +19,7 @@
       : w.fixing ? `<div class="banner live" role="status"><span class="bi">${ic.refresh()}</span>
       <div class="grow"><div class="bt">Fix it in Wealthy Exile</div><div class="sub" style="white-space:normal">Clear the tab or item filter there so all your tabs are in, then press Done: Exilogue gets a new export.</div></div>
       <button class="btn p" data-act="we-refetch">Done, export again</button></div>` : '';
-    return corrupt + upd + check + bannersMain({ snap, cfg });
+    return corrupt + upd + check + EX.weSetup.homeOutdated(snap) + bannersMain({ snap, cfg }) + EX.weSetup.homeCard(snap, cfg, EX.ui);
   }
   function bannersMain({ snap, cfg }) {
     if (!cfg.ui.welcomeDone && !snap.paths.clientTxt) {

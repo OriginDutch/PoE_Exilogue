@@ -156,6 +156,8 @@
 
   // ---------- actions ----------
   const ACTS = {
+    ...EX.weSetup.actions(ui),
+    'ws-toggle': () => { ui.wsOpen = !ui.wsOpen; render(true); },
     play: async () => { const r = await ej.launch('poe'); if (!r.ok) E.toastError(r.error); },
     pob: async () => { const r = await ej.launch('pob'); if (!r.ok) E.toastError(r.error); },
     'ov-toggle': () => save({ overlay: { enabled: !state.cfg.overlay.enabled } }),
@@ -198,14 +200,6 @@
     motion: () => save({ ui: { motion: !state.cfg.ui.motion } }),
     'maps-all': async () => { ui.showAllMaps = !ui.showAllMaps; if (ui.showAllMaps) ui.allMaps = await ej.allMaps(); render(true); },
     'profile-check': async () => { await ej.checkProfile(); state.snap = await ej.snapshot(); render(true); },
-    // Wealthy Exile through Edge (test)
-    'we-open': async () => { const r = await ej.weOpen(); ui.weTest = null; render(true); if (r && !r.ok) E.toastError(r.log.join(' ')); else E.toast('Edge is open. Log in to Wealthy Exile there, then press "2. Test sync & export".'); },
-    'we-test': async () => {
-      ui.weTesting = true; ui.weTest = null; render(true);
-      const r = await ej.weTest();
-      ui.weTesting = false; ui.weTest = r || { ok: false, step: 'no-answer', log: [] }; render(true);
-      if (r && r.ok) E.toast('Edge: exported ✓', { kind: 'ok' }); else E.toastError('Edge test stopped at: ' + ((r && r.step) || 'unknown'));
-    },
     'goal-pick': async () => {
       if (ui.editing) return;
       const g = state.cfg.goal;
@@ -299,6 +293,7 @@
     }
     if ('brksnd' in t.dataset) { await save({ breaks: { sound: { file: t.value } } }); playChime(state.cfg.breaks.sound.volume, t.value); return; }
     if ('weevery' in t.dataset) return save({ weSync: { everyMin: Number(t.value) } });
+    if ('wsbrowser' in t.dataset) { ui.wsBrowser = t.value; render(true); return; }
     if ('ovfont' in t.dataset) return save({ overlay: { font: t.value } });
     if ('ovsize' in t.dataset) return save({ overlay: { size: t.value } });
     if ('theme' in t.dataset) return save({ ui: { theme: t.value } });

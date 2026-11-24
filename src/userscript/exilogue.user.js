@@ -1,8 +1,11 @@
 // ==UserScript==
 // @name         Exilogue – Wealthy Exile auto export
 // @namespace    exilogue
-// @version      1.8
+// @version      2.0
 // @description  After a sync on Wealthy Exile (yours, started from Exilogue's tile, or Exilogue's background sync while you play), waits until it is done and clicks ··· › Export CSV. Exilogue picks the file up from Downloads.
+// @homepageURL  https://github.com/OriginDutch/PoE_Exilogue
+// @updateURL    http://127.0.0.1:47615/exilogue.user.js
+// @downloadURL  http://127.0.0.1:47615/exilogue.user.js
 // @match        https://wealthyexile.com/*
 // @match        https://www.wealthyexile.com/*
 // @grant        GM_xmlhttpRequest
@@ -10,16 +13,21 @@
 // @noframes
 // @run-at       document-start
 // ==/UserScript==
+// Exilogue ships this script and serves it on this PC (127.0.0.1:47615). Tampermonkey checks for updates there (about
+// once a day, or right away with "Check for updates"), so the script follows the Exilogue you have installed, never ahead of it.
 
 (function () {
   'use strict';
   // Runs at document-start: the site's router may rewrite the URL (and drop #exilogue-sync) once it loads,
   // so the marker is remembered for this tab right away.
   const MARK = 'exilogue-sync';
+  // Sent with every request, so Exilogue can tell when this script is older than the one it ships.
+  const VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '2.0';
+  const HEAD = { 'X-Exilogue': '1', 'X-Exilogue-Script': VERSION };
   try {
     if (location.hash === '#' + MARK) { sessionStorage.setItem(MARK, String(Date.now())); history.replaceState(null, '', location.pathname + location.search); }
   } catch { /* storage blocked */ }
-  console.log('[Exilogue] userscript v1.8 loaded on', location.href, (() => { try { return sessionStorage.getItem(MARK) ? '(sync marker found)' : ''; } catch { return ''; } })());
+  console.log('[Exilogue] userscript v' + VERSION + ' loaded on', location.href, (() => { try { return sessionStorage.getItem(MARK) ? '(sync marker found)' : ''; } catch { return ''; } })());
   // Wealthy Exile is built with Mantine (Nov 2026 markup):
   //  - "···" button: <button aria-label="more …"> with <svg class="tabler-icon-dots">
   //  - its menu: <a download="Wealthy-Exile-export-…" href="blob:…"><button role="menuitem">… Export CSV</button></a>
@@ -148,13 +156,13 @@
   // Every 10 s, ask Exilogue (on this PC only) whether to sync now: right after you pressed its tile button, or in the
   // background about every 30 minutes while you play. Exilogue not running = no answer = nothing happens.
   // Tells Exilogue a go couldn't be done, so it can undo exactly that one (and back off when it was a background sync).
-  const reportFailed = id => GM_xmlhttpRequest({ method: 'GET', url: 'http://127.0.0.1:47615/we-sync/failed' + (id ? '?id=' + id : ''), headers: { 'X-Exilogue': '1' } });
+  const reportFailed = id => GM_xmlhttpRequest({ method: 'GET', url: 'http://127.0.0.1:47615/we-sync/failed' + (id ? '?id=' + id : ''), headers: HEAD });
   function askExilogue() {
     if (typeof GM_xmlhttpRequest !== 'function') return;
     const wasFirst = first; first = false;
     // Also ask while busy (busy=1): then Exilogue knows a sync is already running and hands out nothing.
     GM_xmlhttpRequest({
-      method: 'GET', url: 'http://127.0.0.1:47615/we-sync' + (busy ? '?busy=1' : ''), timeout: 5000, headers: { 'X-Exilogue': '1' },
+      method: 'GET', url: 'http://127.0.0.1:47615/we-sync' + (busy ? '?busy=1' : ''), timeout: 5000, headers: HEAD,
       onload: r => {
         let a = {};
         try { a = JSON.parse(r.responseText) || {}; } catch { /* not Exilogue */ }

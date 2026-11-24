@@ -87,10 +87,10 @@
     const custom = L.custom.map(c => `<div class="row between" style="gap:12px;padding:8px 0;border-bottom:1px solid var(--line)">
       <div class="grow" style="min-width:0"><div style="font-weight:600">${E.esc(c.name)}</div><div class="sub ell">${E.esc(c.target)}</div></div>
       <button class="btn q sm" data-lremove="${E.esc(c.id)}">Remove</button>${E.sw(c.on, 'Start ' + c.name + ' with the game', 'launchc:' + c.id)}</div>`).join('');
-    const seen = w.scriptSeenAt && Date.now() - w.scriptSeenAt < 3 * 60e3;
-    const script = w.serverError ? `<span class="st no">${ic.warn()} Port 47615 is taken by another program (${E.esc(w.serverError)}). Background sync is off until Exilogue restarts.</span>`
-      : seen ? `<span class="st ok">${ic.check()} Userscript connected · last asked ${E.ago(w.scriptSeenAt)}</span>`
-        : `<span class="st no" style="white-space:normal">${ic.warn()} Userscript not heard from${w.scriptSeenAt ? ' since ' + E.ago(w.scriptSeenAt) : ''}. It needs version 1.5 in Tampermonkey and an open Wealthy Exile tab in Firefox.</span>`;
+    const ws = EX.weSetup, connected = w.scriptSeenAt && Date.now() - w.scriptSeenAt < 3 * 60e3 && !w.scriptOld && !w.serverError;
+    // Connected and up to date: just the status, the steps fold away (still one click to see them).
+    const setup = connected && !ui.wsOpen ? `<div style="display:flex;flex-direction:column;gap:10px">${ws.statusHtml(snap)}<div><button class="btn q sm" data-act="ws-toggle">Show the steps</button></div></div>`
+      : ws.html(snap, ui, 'settings') + (connected ? '<div style="margin-top:10px"><button class="btn q sm" data-act="ws-toggle">Hide the steps</button></div>' : '');
     return `<section class="setrow"><div><h2>Start with the game</h2><p>When you press Play in Exilogue, these start too. Tools that are already open are skipped. They keep running when the game closes. Starting the game outside Exilogue starts nothing.</p></div>
         <div>${tool('pob', 'Path of Building', P.pobExe || 'Set the path in Settings › Paths', snap.paths.pobExe)}${tool('apt', 'Awakened PoE Trade', P.aptExe || 'Set the path in Settings › Paths', snap.paths.aptExe)}${tool('we', 'Wealthy Exile', 'Opens wealthyexile.com in your browser')}${custom}</div></section>
       <section class="setrow"><div><h2>Add a program or link</h2><p>Any program (.exe) or https link, started along with the game.</p></div>
@@ -98,18 +98,13 @@
           <div class="field"><label class="lbl" for="lc-name">Name</label><input id="lc-name" class="input" data-lnew="name" value="${E.esc(ui.lnewName || '')}" placeholder="Optional"></div>
           <div class="field"><label class="lbl" for="lc-target">Program or link</label><div class="row" style="gap:8px"><input id="lc-target" class="input" data-lnew="target" value="${E.esc(ui.lnewTarget || '')}" placeholder="C:\\…\\Tool.exe or https://…"><button class="btn" data-act="launch-browse">${ic.folder()} Browse</button></div></div>
           <div><button class="btn p" data-act="launch-add">Add</button></div></div></section>
-      <section class="setrow" style="border-bottom:0"><div><h2>Wealthy Exile in the background</h2><p>While you play, Exilogue lets the userscript sync and export about every ${cfg.weSync.everyMin} minutes, in a map or out of one. Not while you're away from the PC. Only works when a Wealthy Exile tab is open in Firefox; with one open, the tile button syncs there instead of opening a new tab.</p></div>
+      <section class="setrow"><div><h2>Connect Wealthy Exile</h2><p>Exilogue gets your net worth and profit per hour from Wealthy Exile. A small script in your browser (through Tampermonkey) syncs and exports there when Exilogue asks, and Exilogue reads the export from Downloads. Exilogue ships the script, so it stays in step with the version you have.</p></div>
+        <div>${setup}</div></section>
+      <section class="setrow" style="border-bottom:0"><div><h2>Wealthy Exile in the background</h2><p>While you play, Exilogue lets the userscript sync and export about every ${cfg.weSync.everyMin} minutes, in a map or out of one. Not while you're away from the PC. Only works while a Wealthy Exile tab is open in your browser; with one open, the tile button syncs there instead of opening a new tab.</p></div>
         <div style="display:flex;flex-direction:column;gap:12px">
           <div class="row between"><span>Sync in the background</span>${E.sw(cfg.weSync.background, 'Sync Wealthy Exile in the background', 'wesync-toggle')}</div>
           <div class="row between"><span class="muted">At most every</span><select class="select" style="width:auto" data-weevery>${[15, 30, 45, 60, 90].map(m => `<option value="${m}" ${cfg.weSync.everyMin === m ? 'selected' : ''}>${m} min</option>`).join('')}</select></div>
-          ${script}</div></section>
-      <section class="setrow" style="border-bottom:0"><div><h2>Wealthy Exile through Edge <span class="pill">test</span></h2><p>An experiment without Tampermonkey: Exilogue opens Microsoft Edge with its own, separate profile and presses sync and export there. First open Edge and log in to Wealthy Exile yourself (once; your normal browser isn't touched). Keep that Edge window open, then try a sync and export. The CSV goes to Downloads and is picked up like always.</p></div>
-        <div style="display:flex;flex-direction:column;gap:10px">
-          <div class="row" style="gap:8px;flex-wrap:wrap">
-            <button class="btn" data-act="we-open">1. Open Edge and log in</button>
-            <button class="btn p" data-act="we-test" ${ui.weTesting ? 'disabled' : ''}>${ui.weTesting ? 'Testing…' : '2. Test sync & export'}</button></div>
-          ${ui.weTest ? `<div class="note" role="status"><b>${ui.weTest.ok ? 'Worked ✓' : 'Stopped at: ' + E.esc(ui.weTest.step)}</b>
-            <ul class="dnotes" style="margin-top:6px">${ui.weTest.log.map(l => `<li>${E.esc(l)}</li>`).join('')}</ul></div>` : ''}</div></section>`;
+          </div></section>`;
   }
 
   function hotkeys(cfg, snap, ui) {
