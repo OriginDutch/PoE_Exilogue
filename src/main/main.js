@@ -388,7 +388,7 @@ function snapshot() {
     stateCorrupt: leagueDb && leagueDb.corruptFile ? path.basename(leagueDb.corruptFile) : null,
     stats: tracker ? tracker.snapshot(Date.now()) : null,
     iconsRev: icons ? icons.rev : 0,
-    wealth: wealth ? { ...ws, history: wealthHistory(), syncAt: wealthSyncAt, syncEvery: WEALTH_SYNC_MS, manualExpiredAt: weManualExpiredAt, failAt: weFailAt, scriptSeenAt: weScriptSeenAt, bgSyncAt: weBgSyncAt, serverError: weServer && weServer.error } : null,
+    wealth: wealth ? { ...ws, pending: wealth.pendingExport(), fixing: weFixing, history: wealthHistory(), syncAt: wealthSyncAt, syncEvery: WEALTH_SYNC_MS, manualExpiredAt: weManualExpiredAt, failAt: weFailAt, scriptSeenAt: weScriptSeenAt, bgSyncAt: weBgSyncAt, serverError: weServer && weServer.error } : null,
     divRate: sessionDivRate(),
     breakPrompt,
     goal: goalInfo(),
@@ -415,7 +415,7 @@ function statusKey() {
 function broadcast() {
   const wins = [dashWin, overlayWin, sheetWin].filter(w => w && !w.isDestroyed() && w.isVisible() && !w.isMinimized() && !hiddenWc.has(w.webContents.id));
   if (!wins.length) return;
-  const key = statusKey();
+  const key = statusKey() + weFixing;
   const now = Date.now();
   // Paused: the timers stand still, so a tick only every 30 s (for "x minutes ago" texts).
   const idle = !tracker || tracker.s.paused;
@@ -495,6 +495,22 @@ function refreshProfileSoon() {
   if (profileSoon) return;
   const wait = Math.max(0, 30000 - (Date.now() - profileLast));
   profileSoon = setTimeout(() => { profileSoon = null; profileLast = Date.now(); checkProfile(); }, wait);
+}
+
+let weFixing = false; // dropped an export that looked filtered: Home asks to fix it in Wealthy Exile and export again
+
+function weSyncNow() {
+  const left = wealthSyncAt + WEALTH_SYNC_MS - Date.now();
+  // A WE tab is open when the userscript asked recently (v1.8 asks every 10 s; Firefox may slow a background tab down).
+  const tabOpen = !weForceTab && weScriptSeenAt && Date.now() - weScriptSeenAt < 60e3;
+  if (left > 0) { if (!tabOpen) shell.openExternal(WEALTH_URL); return { ok: false, left, inTab: !!tabOpen }; }
+  wealthSyncAt = Date.now();
+  weManualAt = wealthSyncAt; // picked up by the userscript via /we-sync (any open WE tab, or the one opened here)
+  weForceTab = false;
+  if (tabOpen) { weManualTtl = 45e3; return { ok: true, inTab: true }; }
+  weManualTtl = 2 * 60e3;
+  shell.openExternal(WEALTH_URL + '#exilogue-sync'); // marker kept as a fallback if the server isn't reachable
+  return { ok: true };
 }
 
 // ---------- essence upgrade overlay ----------
@@ -1480,19 +1496,16 @@ function setupIpc() {
   ipcMain.handle('open:url', (_e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });
   // Wealthy Exile tile: open the stash page with a marker the userscript reacts to (sync, then export).
   // At most once per WEALTH_SYNC_MS; within that, the plain page opens.
-  ipcMain.handle('wealth:sync', () => {
-    const left = wealthSyncAt + WEALTH_SYNC_MS - Date.now();
-    // A WE tab is open when the userscript asked recently (v1.8 asks every 10 s; Firefox may slow a background tab down).
-    const tabOpen = !weForceTab && weScriptSeenAt && Date.now() - weScriptSeenAt < 60e3;
-    if (left > 0) { if (!tabOpen) shell.openExternal(WEALTH_URL); return { ok: false, left, inTab: !!tabOpen }; }
-    wealthSyncAt = Date.now();
-    weManualAt = wealthSyncAt; // picked up by the userscript via /we-sync (any open WE tab, or the one opened here)
-    weForceTab = false;
-    if (tabOpen) { weManualTtl = 45e3; return { ok: true, inTab: true }; }
-    weManualTtl = 2 * 60e3;
-    shell.openExternal(WEALTH_URL + '#exilogue-sync'); // marker kept as a fallback if the server isn't reachable
-    return { ok: true };
+  ipcMain.handle('wealth:sync', () => weSyncNow());
+  // The export had other tabs than last time: keep it (on purpose, it's complete) or drop it (fix it in Wealthy Exile).
+  ipcMain.handle('wealth:resolve', (_e, id, keep) => {
+    const ok = wealth ? wealth.resolve(Number(id), !!keep) : false;
+    weFixing = ok && !keep;
+    if (dashWin && !dashWin.isDestroyed()) dashWin.flashFrame(false);
+    return ok;
   });
+  // After fixing the filter in Wealthy Exile: a new export right away (no 5-minute wait).
+  ipcMain.handle('wealth:refetch', () => { weFixing = false; wealthSyncAt = 0; return weSyncNow(); });
   ipcMain.handle('pick:file', async (_e, opts) => {
     const r = await dialog.showOpenDialog(dashWin, { properties: ['openFile'], filters: opts?.filters });
     return r.canceled ? null : r.filePaths[0];
@@ -1651,7 +1664,18 @@ app.whenReady().then(() => {
   iconRefresh = refreshIcons;
   // Wealthy Exile exports: watched in Downloads (event-driven, no polling).
   try {
-    wealth = new Wealth({ dir, downloads: app.getPath('downloads'), onChange: () => {} });
+    wealth = new Wealth({
+      dir, downloads: app.getPath('downloads'), onChange: () => {},
+      // Other tabs than last time (a filter in Wealthy Exile?): pli-pling and a question on Home. No focus is taken
+      // from the game; the taskbar button blinks instead.
+      onPending: p => {
+        weFixing = false;
+        if (!dashWin || dashWin.isDestroyed()) return;
+        dashWin.webContents.send('wealth:check', p);
+        if (!dashWin.isFocused()) dashWin.flashFrame(true);
+      },
+      divPrice: () => (ninja && ninja.currency && ninja.currency.divineChaos) || null,
+    });
     wealth.start();
     startWeSync();
   } catch (e) { console.error('Wealth import unavailable:', e.message); }

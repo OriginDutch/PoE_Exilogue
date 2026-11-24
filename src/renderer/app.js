@@ -159,6 +159,9 @@
     play: async () => { const r = await ej.launch('poe'); if (!r.ok) E.toastError(r.error); },
     pob: async () => { const r = await ej.launch('pob'); if (!r.ok) E.toastError(r.error); },
     'ov-toggle': () => save({ overlay: { enabled: !state.cfg.overlay.enabled } }),
+    'we-keep': async b => { await ej.wealthResolve(b.dataset.id, true); state.snap = await ej.snapshot(); render(true); E.toast('Counted: this is your stash now.', { kind: 'ok' }); },
+    'we-drop': async b => { await ej.wealthResolve(b.dataset.id, false); state.snap = await ej.snapshot(); render(true); },
+    'we-refetch': async () => { const r = await ej.wealthRefetch(); ui.weWaitSince = Date.now(); ui.weWaitAt = (state.snap.wealth && state.snap.wealth.at) || 0; state.snap = await ej.snapshot(); render(true); E.toast(r && r.inTab ? 'Exporting in your open Wealthy Exile tab…' : 'Wealthy Exile opened, exporting…'); },
     'ess-toggle': () => save({ essences: { enabled: !state.cfg.essences.enabled } }),
     'launch-pob': () => save({ launch: { pob: !state.cfg.launch.pob } }),
     'launch-apt': () => save({ launch: { apt: !state.cfg.launch.apt } }),
@@ -387,6 +390,12 @@
     }
     syncIcons();
     onData(true, prevHk);
+  });
+  // Pli-pling when an export comes in with other tabs than last time (the question is on Home).
+  ej.onWealthCheck(async () => {
+    const v = (state.cfg.breaks && state.cfg.breaks.sound && state.cfg.breaks.sound.volume) || 60;
+    try { const a = new Audio('sounds/export-check.wav'); a.volume = Math.max(0.2, Math.min(1, v / 100)); a.play().catch(() => {}); } catch { /* no audio device */ }
+    state.snap = await ej.snapshot(); render(true);
   });
   ej.onTick(t => { E.applyTick(state.snap, t); onData(false); });
   document.addEventListener('visibilitychange', async () => {

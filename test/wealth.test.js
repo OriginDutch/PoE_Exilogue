@@ -74,20 +74,46 @@ test('wealth: empty, broken and locked files; duplicates update the time and are
   w.close();
 });
 
-test('wealth: session change uses the export right after the session and only breaks inside the measured time', () => {
+test('wealth: session change starts at the first export in the session, ends right after it, breaks only inside', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'exl-ws-'));
   const w = new Wealth({ dir: root, downloads: path.join(root, 'none'), onChange: () => {} });
   const put = (t, chaos) => w.db.prepare('INSERT INTO exports (t, hash, chaos, div_price, top, tabs, items) VALUES (?, ?, ?, ?, ?, ?, ?)').run(t, 'h' + t, chaos, 100, '[]', 1, 1);
   const H = 3600e3, s = 1000 * H;
-  put(s - 10 * 60e3, 1000);      // before the session
-  put(s + 60 * 60e3, 1300);      // during
+  put(s - 10 * 60e3, 900);         // before the session: market moves since then don't count
+  put(s + 5 * 60e3, 1000);         // first one in the session: the start
+  put(s + 65 * 60e3, 1300);        // during
   put(s + 3 * H + 5 * 60e3, 1500); // 5 min after it ended
-  // a 25-minute break at +2 h lies outside the first hour and must not shrink it
-  const mid = w.sessionChange(s, s + 60 * 60e3, [{ t: s + 2 * H, ms: 25 * 60e3 }]);
+  assert.equal(w.sessionChange(s, s + 30 * 60e3), null); // one export in the session: nothing to compare yet
+  const mid = w.sessionChange(s, s + 65 * 60e3, [{ t: s + 2 * H, ms: 25 * 60e3 }]);
   assert.equal(mid.divines, 3);
   assert.ok(Math.abs(mid.perHour - 3) < 1e-9);
   const all = w.sessionChange(s, s + 3 * H, [{ t: s + 2 * H, ms: 30 * 60e3 }]);
   assert.equal(all.divines, 5);
-  assert.ok(Math.abs(all.perHour - 5 / 2.5) < 1e-9);
+  assert.ok(Math.abs(all.perHour - 5 / (145 / 60)) < 1e-9);
+  w.close();
+});
+
+test('wealth: other tabs than last time wait for an answer; no own divines uses poe.ninja', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'exl-wp-'));
+  const dl = path.join(root, 'dl'); fs.mkdirSync(dl);
+  const asked = [];
+  const w = new Wealth({ dir: root, downloads: dl, onChange: () => {}, onPending: p => asked.push(p), divPrice: () => 190 });
+  const csv = rows => '\ufeff"Name","Tab","Quantity","Price","Total"\n' + rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  const imp = async (name, rows) => { const f = path.join(dl, name); fs.writeFileSync(f, csv(rows)); await w._import(f); };
+  await imp('Wealthy-Exile-export-1.csv', [['Divine Orb', 'B', 2, 200, 400], ['Chaos Orb', 'B', 100, 1, 100], ['Breach Thread', 'FR', 10, 1, 10]]);
+  await imp('Wealthy-Exile-export-2.csv', [['Deafening Essence of Zeal', 'Ess', 14, 22, 308]]); // a filter in Wealthy Exile
+  assert.equal(asked.length, 1);
+  assert.deepEqual([asked[0].missing, asked[0].added], [['B', 'FR'], ['Ess']]);
+  assert.equal(w.summary(0).chaos, 510); // the filtered one doesn't count yet
+  const row = w.db.prepare('SELECT div_price FROM exports WHERE id = ?').get(asked[0].id);
+  assert.equal(row.div_price, 190); // no Divine Orb line: poe.ninja's price
+  assert.equal(w.resolve(asked[0].id, false), true);
+  assert.equal(w.pendingExport(), null);
+  assert.equal(w.summary(0).chaos, 510);
+  await imp('Wealthy-Exile-export-3.csv', [['Chaos Orb', 'B', 50, 1, 50]]); // FR emptied for real
+  w.resolve(w.pendingExport().id, true);
+  assert.equal(w.summary(0).chaos, 50);
+  await imp('Wealthy-Exile-export-4.csv', [['Chaos Orb', 'B', 60, 1, 60]]); // same tabs as the one now counting: no question
+  assert.equal(w.pendingExport(), null);
   w.close();
 });

@@ -10,7 +10,16 @@
     const upd = u && u.state === 'ready' ? `<div class="banner live" role="status"><span class="bi">${ic.refresh()}</span>
       <div class="grow"><div class="bt">Exilogue ${E.esc(u.next || '')} is ready</div><div class="sub">It installs by itself when you close Exilogue${snap.gameRunning ? '. Restarting is possible once the game is closed.' : ', or restart now.'}</div></div>
       ${snap.gameRunning ? '' : '<button class="btn p" data-act="update-install">Restart and update</button>'}</div>` : '';
-    return corrupt + upd + bannersMain({ snap, cfg });
+    const w = snap.wealth || {}, pe = w.pending;
+    const tabs = a => a.length ? a.map(t => `<b style="color:var(--tx)">${E.esc(t || '(no tab)')}</b>`).join(', ') : 'none';
+    const check = pe ? `<div class="banner warn" role="alert"><span class="bi">${ic.warn()}</span>
+      <div class="grow"><div class="bt">Your last Wealthy Exile export has other tabs than the one before</div>
+        <div class="sub" style="white-space:normal">Missing this time: ${tabs(pe.missing)} · New: ${tabs(pe.added)} · ${pe.items} items. A filter in Wealthy Exile? Until you answer, this export doesn't count.</div></div>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn p" data-act="we-keep" data-id="${pe.id}">On purpose, it's complete</button><button class="btn" data-act="we-drop" data-id="${pe.id}">Not on purpose</button></div></div>`
+      : w.fixing ? `<div class="banner live" role="status"><span class="bi">${ic.refresh()}</span>
+      <div class="grow"><div class="bt">Fix it in Wealthy Exile</div><div class="sub" style="white-space:normal">Clear the tab or item filter there so all your tabs are in, then press Done: Exilogue gets a new export.</div></div>
+      <button class="btn p" data-act="we-refetch">Done, export again</button></div>` : '';
+    return corrupt + upd + check + bannersMain({ snap, cfg });
   }
   function bannersMain({ snap, cfg }) {
     if (!cfg.ui.welcomeDone && !snap.paths.clientTxt) {

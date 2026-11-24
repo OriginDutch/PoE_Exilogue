@@ -70,7 +70,7 @@ function readExport(text) {
 }
 
 class Wealth {
-  // opts: { dir (userData), downloads, onChange() }
+  // opts: { dir (userData), downloads, onChange(), onPending(p), divPrice() → chaos per divine or null (poe.ninja) }
   constructor(opts) {
     this.o = opts;
     this.archive = path.join(opts.dir, 'wealth');
@@ -81,6 +81,9 @@ class Wealth {
       CREATE TABLE IF NOT EXISTS exports (id INTEGER PRIMARY KEY, t INTEGER NOT NULL, hash TEXT UNIQUE, chaos REAL NOT NULL,
         div_price REAL, top TEXT NOT NULL, tabs TEXT NOT NULL, items INTEGER NOT NULL);
     `);
+    // status: 'ok' counts; 'pending' = other tabs than the export before it, waiting for "on purpose?"; 'discarded' = no.
+    const cols = this.db.prepare('PRAGMA table_info(exports)').all().map(c => c.name);
+    if (!cols.includes('status')) this.db.exec("ALTER TABLE exports ADD COLUMN status TEXT NOT NULL DEFAULT 'ok'");
     this.written = 0; this.read = 0; // for the Storage tab (approximate for the database: row bytes)
     this.rev = 0;
     this.watcher = null;
@@ -147,8 +150,18 @@ class Wealth {
         const ex = readExport(buf.toString('utf8'));
         const top = JSON.stringify(ex.items.slice(0, 5));
         const tabs = JSON.stringify(ex.tabs);
-        this.db.prepare('INSERT INTO exports (t, hash, chaos, div_price, top, tabs, items) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .run(t, hash, ex.chaos, ex.divPrice, top, tabs, ex.items.length);
+        // No Divine Orb line of your own (you had none): poe.ninja's divine price, else the last one known.
+        let div = ex.divPrice;
+        if (!(div > 0)) { try { div = this.o.divPrice ? this.o.divPrice() : null; } catch { div = null; } }
+        if (!(div > 0)) { const r = this.db.prepare('SELECT div_price FROM exports WHERE div_price > 0 ORDER BY t DESC LIMIT 1').get(); div = r ? r.div_price : null; }
+        // Other tabs than the last export that counts (a filter in Wealthy Exile, a tab emptied or new): ask first.
+        const prev = this.db.prepare("SELECT tabs FROM exports WHERE status = 'ok' AND t <= ? ORDER BY t DESC LIMIT 1").get(t);
+        const diff = prev ? tabDiff(Object.keys(JSON.parse(prev.tabs)), Object.keys(ex.tabs)) : null;
+        const status = diff && (diff.missing.length || diff.added.length) ? 'pending' : 'ok';
+        if (status === 'pending') this.db.prepare("UPDATE exports SET status = 'discarded' WHERE status = 'pending'").run(); // only the newest one asks
+        this.db.prepare('INSERT INTO exports (t, hash, chaos, div_price, top, tabs, items, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(t, hash, ex.chaos, div, top, tabs, ex.items.length, status);
+        if (status === 'pending' && this.o.onPending) this.o.onPending(this.pendingExport());
         this.written += top.length + tabs.length + 120;
         added = true;
       } else if (t > exists.t) {
@@ -191,8 +204,8 @@ class Wealth {
 
   // For the snapshot: latest export since `since` (league start, ms) and the one before it.
   summary(since) {
-    const rows = this.db.prepare('SELECT t, chaos, div_price, top FROM exports WHERE t >= ? ORDER BY t DESC LIMIT 2').all(since || 0);
-    const count = this.db.prepare('SELECT COUNT(*) n FROM exports WHERE t >= ?').get(since || 0).n;
+    const rows = this.db.prepare("SELECT t, chaos, div_price, top FROM exports WHERE t >= ? AND status = 'ok' ORDER BY t DESC LIMIT 2").all(since || 0);
+    const count = this.db.prepare("SELECT COUNT(*) n FROM exports WHERE t >= ? AND status = 'ok'").get(since || 0).n;
     if (!rows.length) return { count: 0, error: this.lastError ? `${path.basename(this.lastError.file)}: ${this.lastError.msg}` : null };
     const [a, b] = rows;
     const div = a.div_price || (b && b.div_price) || null;
@@ -205,7 +218,7 @@ class Wealth {
 
   // Chaos value over time since `since`, evenly thinned to at most `max` points: [{ t, divines }].
   history(since, max = 40) {
-    const rows = this.db.prepare('SELECT t, chaos, div_price FROM exports WHERE t >= ? ORDER BY t ASC').all(since);
+    const rows = this.db.prepare("SELECT t, chaos, div_price FROM exports WHERE t >= ? AND status = 'ok' ORDER BY t ASC").all(since);
     const pts = rows.filter(r => r.div_price > 0).map(r => ({ t: r.t, divines: r.chaos / r.div_price }));
     if (pts.length <= max) return pts;
     const out = [];
@@ -233,29 +246,49 @@ class Wealth {
 
   latestAt() { const r = this.db.prepare('SELECT MAX(t) t FROM exports').get(); return (r && r.t) || 0; }
 
-  // Wealth change over a play session, from the exports around it.
-  // base: the last export before the session (at most 6 h old), else the first one in its first 20 minutes.
+  // Wealth change over a play session (Marcel, Nov 2026): from the first export IN the session, so market moves
+  // and trades between sessions never show up as this session's profit or loss.
   // end: the first export up to 30 minutes after the session (you often export after closing the game), else the last one in it.
   // breaks: [{ t, ms }] — only the part of a break inside the measured stretch is taken off the play time.
-  // → { divines, perHour, from, to } or null when there aren't two usable exports yet.
+  // Only exports that count (status 'ok'). → { divines, perHour, from, to } or null until there are two in the session.
   sessionChange(start, end, breaks = []) {
-    const q = this.db.prepare('SELECT t, chaos, div_price FROM exports WHERE t <= ? AND t >= ? ORDER BY t DESC LIMIT 1');
-    let base = q.get(start, start - 6 * 3600e3);
-    if (!base) base = this.db.prepare('SELECT t, chaos, div_price FROM exports WHERE t > ? AND t <= ? ORDER BY t ASC LIMIT 1').get(start, start + 20 * 60e3);
-    const last = this.db.prepare('SELECT t, chaos, div_price FROM exports WHERE t > ? AND t <= ? ORDER BY t ASC LIMIT 1').get(end, end + 30 * 60e3)
-      || this.db.prepare('SELECT t, chaos, div_price FROM exports WHERE t <= ? ORDER BY t DESC LIMIT 1').get(end);
+    const base = this.db.prepare("SELECT t, chaos, div_price FROM exports WHERE t >= ? AND t <= ? AND status = 'ok' ORDER BY t ASC LIMIT 1").get(start, end);
+    const last = this.db.prepare("SELECT t, chaos, div_price FROM exports WHERE t > ? AND t <= ? AND status = 'ok' ORDER BY t ASC LIMIT 1").get(end, end + 30 * 60e3)
+      || this.db.prepare("SELECT t, chaos, div_price FROM exports WHERE t <= ? AND status = 'ok' ORDER BY t DESC LIMIT 1").get(end);
     if (!base || !last || last.t <= base.t) return null;
     const div = last.div_price || base.div_price;
     if (!div) return null;
     const divines = (last.chaos - base.chaos) / div;
-    const a = Math.max(base.t, start), b = Math.min(last.t, end);
+    const a = base.t, b = Math.min(last.t, end);
     let off = 0;
     for (const br of breaks || []) off += Math.max(0, Math.min(b, br.t + (br.ms || 0)) - Math.max(a, br.t));
     const ms = b - a - off;
     return { divines, perHour: ms >= 10 * 60e3 ? divines / (ms / 3600e3) : null, from: base.t, to: last.t };
   }
 
+  // The export waiting for "on purpose?": { id, t, chaos, items, missing: [tab], added: [tab] } or null.
+  pendingExport() {
+    const r = this.db.prepare("SELECT id, t, chaos, tabs, items FROM exports WHERE status = 'pending' ORDER BY t DESC LIMIT 1").get();
+    if (!r) return null;
+    const prev = this.db.prepare("SELECT tabs FROM exports WHERE status = 'ok' AND t <= ? ORDER BY t DESC LIMIT 1").get(r.t);
+    const d = tabDiff(prev ? Object.keys(JSON.parse(prev.tabs)) : [], Object.keys(JSON.parse(r.tabs)));
+    return { id: r.id, t: r.t, chaos: r.chaos, items: r.items, ...d };
+  }
+
+  // keep = true: on purpose, the export is complete and counts (its tabs are the new normal). false: dropped.
+  resolve(id, keep) {
+    const r = this.db.prepare("UPDATE exports SET status = ? WHERE id = ? AND status = 'pending'").run(keep ? 'ok' : 'discarded', id);
+    if (r.changes) { this.rev++; this.written += 32; if (this.o.onChange) this.o.onChange(); }
+    return r.changes > 0;
+  }
+
   close() { this.stop(); try { this.db.close(); } catch { /* closed */ } }
 }
 
-module.exports = { Wealth, readExport, parseCsv };
+// Tab names that are gone and new, compared with the export before.
+function tabDiff(before, now) {
+  const a = new Set(before), b = new Set(now);
+  return { missing: [...a].filter(x => !b.has(x)).sort(), added: [...b].filter(x => !a.has(x)).sort() };
+}
+
+module.exports = { Wealth, readExport, parseCsv, tabDiff };
