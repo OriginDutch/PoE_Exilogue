@@ -1771,7 +1771,7 @@ function setupIpc() {
   });
   // Browsers don't let other programs open their chrome:// / edge:// pages, so that address is copied instead.
   ipcMain.handle('we:setup-copy', (_e, browser) => {
-    const id = { chrome: 'chrome://extensions/?id=dhdgffkkebhmkfjojejmpbldmpobfkfo', edge: 'edge://extensions/?id=iikmkjmpaadaobahmlepeloendndfphd' }[browser];
+    const id = { chrome: 'chrome://extensions/?id=dhdgffkkebhmkfjojejmpbldmpobfkfo', edge: 'edge://extensions/?id=iikmkjmpaadaobahmlepeloendndfphd', opera: 'opera://extensions/?id=mfdhdgbonjidekjkjmjaneanmdmpmidf' }[browser];
     if (!id) return false; clipboard.writeText(id); return true;
   });
   ipcMain.handle('we:setup-skip', () => { if (config.data.weSync.setup === 'new') { config.data.weSync.setup = 'skipped'; config.saveSoon(); broadcastConfig(); } return true; });

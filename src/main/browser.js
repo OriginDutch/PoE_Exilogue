@@ -9,16 +9,19 @@ const TAMPERMONKEY = {
   firefox: 'https://addons.mozilla.org/firefox/addon/tampermonkey/',
   chrome: 'https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo',
   edge: 'https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd',
+  // Tampermonkey's own listing on Opera add-ons (the slug says beta; it is the one tampermonkey.net links for Opera).
+  opera: 'https://addons.opera.com/extensions/details/tampermonkey-beta/',
 };
-const NAMES = { firefox: 'Firefox', chrome: 'Chrome', edge: 'Edge', other: 'your browser' };
+const NAMES = { firefox: 'Firefox', chrome: 'Chrome', edge: 'Edge', opera: 'Opera', other: 'your browser' };
 
-// ProgId from `reg query` output → firefox | chrome | edge | other
+// ProgId from `reg query` output → firefox | chrome | edge | opera | other (Opera GX's ProgId has a space: "Opera GXStable")
 function browserFromRegOutput(out) {
-  const m = /ProgId\s+REG_SZ\s+(\S+)/i.exec(String(out || ''));
+  const m = /ProgId\s+REG_SZ\s+(.+?)\s*$/im.exec(String(out || ''));
   const id = m ? m[1] : '';
   if (/^FirefoxURL/i.test(id)) return 'firefox';
   if (/^ChromeHTML$/i.test(id)) return 'chrome';
   if (/^MSEdgeHTM$/i.test(id)) return 'edge';
+  if (/^Opera/i.test(id)) return 'opera';
   return 'other';
 }
 

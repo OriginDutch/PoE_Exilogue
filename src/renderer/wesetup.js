@@ -3,8 +3,8 @@
 // Used on the Wealthy Exile page; Home offers it once to new installs. The script itself is served by Exilogue.
 (function () {
   const E = window.EX, ic = () => E.icon;
-  const NAMES = { firefox: 'Firefox', chrome: 'Chrome', edge: 'Edge' };
-  const ADDR = { chrome: 'chrome://extensions/?id=dhdgffkkebhmkfjojejmpbldmpobfkfo', edge: 'edge://extensions/?id=iikmkjmpaadaobahmlepeloendndfphd' };
+  const NAMES = { firefox: 'Firefox', chrome: 'Chrome', edge: 'Edge', opera: 'Opera' };
+  const ADDR = { chrome: 'chrome://extensions/?id=dhdgffkkebhmkfjojejmpbldmpobfkfo', edge: 'edge://extensions/?id=iikmkjmpaadaobahmlepeloendndfphd', opera: 'opera://extensions/?id=mfdhdgbonjidekjkjmjaneanmdmpmidf' };
   let asked = false;
 
   // Which browser: what Windows opens links in, until you pick another one here.
@@ -56,17 +56,18 @@
   function html(snap, ui, where) {
     const b = browser(ui), s = status(snap);
     const pick = `<label class="ws-pick"><span class="muted">Your browser</span><select class="select" style="width:auto" data-wsbrowser aria-label="Your browser">
-      ${b ? '' : '<option>Looking…</option>'}${['firefox', 'chrome', 'edge'].map(k => `<option value="${k}" ${b === k ? 'selected' : ''}>${NAMES[k]}</option>`).join('')}<option value="other" ${b === 'other' ? 'selected' : ''}>Another browser</option></select></label>`;
+      ${b ? '' : '<option>Looking…</option>'}${['firefox', 'chrome', 'edge', 'opera'].map(k => `<option value="${k}" ${b === k ? 'selected' : ''}>${NAMES[k]}</option>`).join('')}<option value="other" ${b === 'other' ? 'selected' : ''}>Another browser</option></select></label>`;
     const known = b && NAMES[b];
-    const chromium = b === 'chrome' || b === 'edge';
+    const chromium = b === 'chrome' || b === 'edge' || b === 'opera';
     const step1 = `<li><div><b>Install Tampermonkey</b>
-        <p>A free browser add-on that runs small scripts on websites. ${known ? `This opens its page in the ${NAMES[b]} add-on store; press ${b === 'firefox' ? 'Add to Firefox' : b === 'edge' ? 'Get' : 'Add to Chrome'} there.` : 'Exilogue has steps for Firefox, Chrome and Edge. In another browser, install Tampermonkey from its own add-on store, then do step 2 (Install the script).'}</p>
+        <p>A free browser add-on that runs small scripts on websites. ${known ? `This opens its page in the ${NAMES[b]} add-on store; press ${b === 'firefox' ? 'Add to Firefox' : b === 'edge' ? 'Get' : b === 'opera' ? 'Add to Opera' : 'Add to Chrome'} there.` : 'Exilogue has steps for Firefox, Chrome, Edge and Opera. In another browser, install Tampermonkey from its own add-on store, then do step 2 (Install the script).'}</p>
         <button class="btn" data-act="ws-store" ${known ? '' : 'disabled'}>Open Tampermonkey${known ? ' for ' + NAMES[b] : ''}</button></div></li>`;
     const step2 = chromium ? `<li><div><b>Allow user scripts</b>
-        <p>${NAMES[b]} asks this once. Right-click the Tampermonkey icon next to the address bar (it may be under the puzzle piece) › <b>Manage extension</b>, then switch on <b>Allow User Scripts</b>. ${NAMES[b]} doesn't let programs open that page for you, so you can also paste the address below into the address bar.</p>
+        <p>${b === 'opera' ? 'Opera asks this once, with two switches. Open its extensions page (paste the address below into the address bar), turn on <b>Developer mode</b> at the top, then press <b>Details</b> under Tampermonkey and switch on <b>Allow User Scripts</b>. Opera doesn\'t let programs open that page for you.'
+          : `${NAMES[b]} asks this once. Right-click the Tampermonkey icon next to the address bar (it may be under the puzzle piece) › <b>Manage extension</b>, then switch on <b>Allow User Scripts</b>. ${NAMES[b]} doesn't let programs open that page for you, so you can also paste the address below into the address bar.`}</p>
         ${picture(b)}
         <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><code class="ws-addr">${ADDR[b]}</code><button class="btn sm" data-act="ws-copy">Copy address</button></div>
-        <p class="muted" style="font-size:12px;margin-top:6px">No such switch? Older ${NAMES[b]} versions use <b>Developer mode</b> at the top right of the extensions page instead.</p></div></li>` : '';
+        ${b === 'opera' ? '' : `<p class="muted" style="font-size:12px;margin-top:6px">No such switch? Older ${NAMES[b]} versions use <b>Developer mode</b> at the top right of the extensions page instead.</p>`}</div></li>` : '';
     const step3 = `<li><div><b>Install the Exilogue script</b>
         <p>Tampermonkey shows the script; press <b>Install</b>${s.kind === 'old' ? ' (or Update)' : ''}. After that it follows Exilogue's updates by itself. Then open Wealthy Exile and log in; the tab may stay open in the background.</p>
         <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn p" data-act="ws-script" ${s.kind === 'port' ? 'disabled' : ''}>Install the script</button><button class="btn" data-act="ws-site">Open Wealthy Exile</button></div>

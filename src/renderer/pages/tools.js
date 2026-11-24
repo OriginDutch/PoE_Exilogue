@@ -402,7 +402,7 @@ ${connected ? `          <section class="box"><div class="bh"><h2>Connection</h2
         <section class="box span2">
           ${q('The overlay doesn\'t show in game', 'Set the game to <b>Windowed fullscreen</b> (Options › Graphics). Check that the overlay is switched on (Overlay page) and that the game runs. Its hotkey shows or hides it.')}
           ${q('Exilogue doesn\'t see my zones or maps', 'It reads the game\'s log, Client.txt. Check Settings › Paths (the dot must be green) and the league start in Settings › League: anything before the start is ignored.')}
-          ${q('Wealthy Exile doesn\'t sync', 'Keep a Wealthy Exile tab open in your browser. The Wealthy Exile page shows whether the script is connected; if not, follow its steps again. In Chrome and Edge, “Allow User Scripts” must stay on.')}
+          ${q('Wealthy Exile doesn\'t sync', 'Keep a Wealthy Exile tab open in your browser. The Wealthy Exile page shows whether the script is connected; if not, follow its steps again. In Chrome, Edge and Opera, “Allow User Scripts” must stay on.')}
           ${q('Prices or the goal are missing', 'Prices come from poe.ninja. If it is down or your league name differs from poe.ninja\'s, prices stay empty. Check the league name in Settings › League.')}
           ${q('A hotkey doesn\'t work', 'Another program may use the same keys: Settings › Hotkeys shows it in red. Numpad keys need Num Lock on.')}
           ${q('Where are my files and backups?', 'Settings › Storage &amp; backups, with Open folder. A backup is made before every rebuild or path change.')}
