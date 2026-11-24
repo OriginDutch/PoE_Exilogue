@@ -91,6 +91,11 @@ EX.icon = {
   e_sessEnd: () => `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor"/></svg>`,
 };
 
+// A hotkey as it really works: its keys when Exilogue holds it (or will, once the game runs); "not available" when
+// Settings refused it (the game uses it, a duplicate, another app has it).
+EX.hkUsable = (snap, key) => !snap || !snap.hotkeys || ['ok', 'waiting', undefined].includes(snap.hotkeys[key]);
+EX.hotkey = (cfg, snap, key) => !cfg.hotkeys[key] ? EX.kbd('') : EX.hkUsable(snap, key) ? EX.kbd(cfg.hotkeys[key])
+  : '<button class="lnk hk-bad" data-nav="settings:hotkeys" title="See Settings › Hotkeys">hotkey not available</button>';
 EX.kbd = acc => (acc ? `<span class="row" style="gap:3px">${acc.split('+').map(k => `<span class="kbd">${EX.esc(k)}</span>`).join('')}<span class="vh">Hotkey ${EX.esc(acc)}</span></span>` : '<span class="sub">no hotkey</span>');
 
 EX.note = text => `<div class="note">${EX.icon.info()}<span>${text}</span></div>`;

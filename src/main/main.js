@@ -12,6 +12,7 @@ const { IconStore } = require('./icons');
 const { Wealth } = require('./wealth');
 const essences = require('../core/essences');
 const poeconfig = require('../core/poeconfig');
+const gamekeys = require('../core/gamekeys');
 const { NinjaPrice, ITEM_TYPES: NINJA_TYPES, SHEET_TYPES } = require('./ninja');
 const { shouldSync, WeSyncServer, PORT: WE_PORT } = require('./wesync');
 const { lastBuild } = require('./pob');
@@ -331,6 +332,7 @@ function startTracking() {
 function setGameRunning(running) {
   if (running === gameRunning) return;
   gameRunning = running;
+  if (!hotkeysPaused) registerHotkeys(); // taken while the game runs, released when it closes (binds re-read too)
   // A downloaded update installs when Exilogue closes, but never while the game runs.
   if (autoUpdater) autoUpdater.autoInstallOnAppQuit = !running;
   if (caughtUp && tracker) tracker.setPaused(!running, Date.now());
@@ -421,9 +423,15 @@ function autoDetectPaths() {
 }
 
 // For Settings: which screen "Automatic" picks right now (checked at most once a minute).
-let gameDispAt = 0, gameDispId = null, gameExclusiveFs = false;
+let gameDispAt = 0, gameDispId = null, gameExclusiveFs = false, gameCfgMtime = 0;
 function gameDisplayCached() {
-  if (Date.now() - gameDispAt > 60e3) { gameDispAt = Date.now(); const info = gameConfig(), g = gameDisplay(info); gameDispId = g ? g.display.id : null; gameExclusiveFs = poeconfig.exclusiveFullscreen(info); }
+  if (Date.now() - gameDispAt > 60e3) {
+    gameDispAt = Date.now(); const info = gameConfig(), g = gameDisplay(info); gameDispId = g ? g.display.id : null; gameExclusiveFs = poeconfig.exclusiveFullscreen(info);
+    // Keybinds changed in the game (it rewrote its settings file): check the hotkeys against them again.
+    let mt = 0; try { mt = fs.statSync(gameConfigFile()).mtimeMs; } catch {}
+    if (gameCfgMtime && mt !== gameCfgMtime && gameRunning && !hotkeysPaused) registerHotkeys();
+    gameCfgMtime = mt;
+  }
   return gameDispId;
 }
 
@@ -442,7 +450,7 @@ function diagnostics() {
     `Client.txt: set ${yes(config.data.paths.clientTxt)}, readable ${yes(p.clientTxt)}${logMissing ? ', missing' : ''} · caught up ${yes(caughtUp)}`,
     `Path of Building: ${yes(p.pobExe)} · Awakened PoE Trade: ${yes(p.aptExe)}`,
     `Overlay: ${config.data.overlay.enabled ? 'on' : 'off'} · exclusive fullscreen ${yes(gameExclusiveFs)} · screens ${screen.getAllDisplays().length}`,
-    `Hotkeys: ${Object.entries(hotkeyStatus || {}).filter(([, v]) => v && v !== 'ok' && v !== 'none').map(([k, v]) => k + ' ' + v).join(', ') || 'all ok'}`,
+    `Hotkeys: ${Object.entries(hotkeyStatus || {}).filter(([, v]) => v && !['ok', 'none', 'waiting'].includes(v)).map(([k, v]) => k + ' ' + v).join(', ') || 'all ok'}`,
     `Updates: ${updateState.state}${updateState.error ? ' · ' + scrubPaths(updateState.error) : ''}`,
     `poe.ninja: ${ninja.rev ? 'prices loaded' : 'no prices yet'} · profile: ${profileStatus.state}`,
     `Wealthy Exile: exports ${w ? w.count || 0 : 0} · script ${weScriptVersion || config.data.weSync.seenVersion || 'never seen'}${weServer && weServer.error ? ' · server ' + scrubPaths(weServer.error) : ''}${wealth && wealth.lastError ? ' · last error ' + scrubPaths(wealth.lastError.msg || '') : ''}`,
@@ -460,6 +468,7 @@ function snapshot() {
     pathSource: config.data.detected || null,
     neversink: { latest: neversinkLatest, ...config.data.neversink },
     hotkeys: hotkeyStatus,
+    hotkeyGame,
     overlayUnlocked,
     displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, n: i + 1, label: d.label || '', w: Math.round(d.size.width * d.scaleFactor), h: Math.round(d.size.height * d.scaleFactor), primary: d.id === screen.getPrimaryDisplay().id })),
     gameDisplayId: gameDisplayCached(),
@@ -492,7 +501,7 @@ const sentKey = new Map(); // webContents id -> data key last sent
 const hiddenWc = new Set(); // windows whose page reports it can't be seen (covered by the game, etc.)
 let lastIdleTick = 0;
 function statusKey() {
-  return JSON.stringify([gen, updateState, overlayNoteState && overlayNoteState.until, breakPrompt && [breakPrompt.shownAt, breakPrompt.revealed], ninja.rev, sheetCache.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [(weManualTick(), wealth.rev), wealth.lastError, wealthSyncAt, weBgSyncAt, weManualExpiredAt, weFailAt, weScriptVersion, Math.floor(weScriptSeenAt / 300000), weBgNext().state] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, overlayUnlocked,
+  return JSON.stringify([gen, updateState, overlayNoteState && overlayNoteState.until, breakPrompt && [breakPrompt.shownAt, breakPrompt.revealed], ninja.rev, sheetCache.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [(weManualTick(), wealth.rev), wealth.lastError, wealthSyncAt, weBgSyncAt, weManualExpiredAt, weFailAt, weScriptVersion, Math.floor(weScriptSeenAt / 300000), weBgNext().state] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, hotkeyGame, overlayUnlocked,
     profileStatus, neversinkLatest, config.data.neversink, pathsCache, leagueDb && leagueDb.corruptFile, (gameDisplayCached(), gameExclusiveFs)]);
 }
 function broadcast() {
@@ -644,9 +653,15 @@ async function toggleEssences() {
 
 // The screen the game runs on, from Documents\My Games\Path of Exile\production_Config.ini (monitor name, else
 // a unique resolution). Read on every press: cheap, and it follows changes in the game's settings.
+const gameConfigFile = () => path.join(app.getPath('documents'), 'My Games', 'Path of Exile', 'production_Config.ini');
 function gameConfig() {
-  try { return poeconfig.parseDisplay(fs.readFileSync(path.join(app.getPath('documents'), 'My Games', 'Path of Exile', 'production_Config.ini'), 'utf8')); }
+  try { return poeconfig.parseDisplay(fs.readFileSync(gameConfigFile(), 'utf8')); }
   catch { return null; }
+}
+// Your keybinds in the game (empty when the file can't be read: then only the fixed game keys are checked).
+function gameBinds() {
+  try { return gamekeys.parseActionKeys(fs.readFileSync(gameConfigFile(), 'utf8')); }
+  catch { return []; }
 }
 function gameDisplay(info = gameConfig()) {
   if (!info) return null;
@@ -728,16 +743,23 @@ const HOTKEY_ACTIONS = {
   },
 };
 
+// Hotkeys are only taken while the game runs (outside it every combination stays free for other programs), and never
+// one the game itself uses: Windows hands a registered combination only to Exilogue, so the game would lose it.
+// hotkeyStatus: none | ok | waiting (game not running) | game | duplicate | taken | invalid; hotkeyGame: which game action.
+let hotkeyGame = {}, hotkeysPaused = false;
 function registerHotkeys() {
   globalShortcut.unregisterAll();
   const hk = config.data.hotkeys;
-  hotkeyStatus = {};
-  const seen = {};
+  hotkeyStatus = {}; hotkeyGame = {};
+  const seen = {}, binds = gameBinds();
   for (const [key, fn] of Object.entries(HOTKEY_ACTIONS)) {
     const acc = hk[key];
     if (!acc) { hotkeyStatus[key] = 'none'; continue; }
-    if (seen[acc]) { hotkeyStatus[key] = 'duplicate'; hotkeyStatus[seen[acc]] = 'duplicate'; continue; }
+    const use = gamekeys.gameUse(acc, binds);
+    if (use) { hotkeyStatus[key] = 'game'; hotkeyGame[key] = use; continue; }
+    if (seen[acc]) { if (hotkeyStatus[seen[acc]] === 'ok') globalShortcut.unregister(acc); hotkeyStatus[key] = 'duplicate'; hotkeyStatus[seen[acc]] = 'duplicate'; continue; }
     seen[acc] = key;
+    if (!gameRunning) { hotkeyStatus[key] = 'waiting'; continue; }
     try {
       hotkeyStatus[key] = globalShortcut.register(acc, fn) ? 'ok' : 'taken';
     } catch {
@@ -1597,7 +1619,7 @@ function setupIpc() {
     deepMerge(config.data, patch);
     sanitizeConfig();
     if (patch.sheets) { setImmediate(() => sheetTick()); applySheetPin(); }
-    if (patch.hotkeys) registerHotkeys();
+    if (patch.hotkeys && !hotkeysPaused) registerHotkeys(); // while a key is being recorded they stay released
     if (patch.paths) { refreshPaths(); if (iconRefresh) iconRefresh(); }
     if (patch.overlay && 'enabled' in patch.overlay) setOverlayEnabled(config.data.overlay.enabled);
     if (patch.essences && !config.data.essences.enabled) hideEssences();
@@ -1687,7 +1709,7 @@ function setupIpc() {
     try { return restoreBackup(String(file)); } catch (e) { return { ok: false, error: e.message }; }
   });
   ipcMain.handle('overlay:lock', (_e, locked) => setOverlayLocked(locked));
-  ipcMain.handle('hotkeys:pause', (_e, paused) => { if (paused) globalShortcut.unregisterAll(); else registerHotkeys(); return true; });
+  ipcMain.handle('hotkeys:pause', (_e, paused) => { hotkeysPaused = !!paused; if (paused) globalShortcut.unregisterAll(); else registerHotkeys(); return true; });
   ipcMain.handle('overlay:reset', () => {
     overlayWide = null; config.data.overlay.bounds = null; config.save();
     if (overlayWin) {

@@ -202,7 +202,7 @@
     const on = cfg.overlay.enabled;
     return `${head('overlay', 'Overlay', on ? (snap.gameRunning ? 'Showing in game' : 'Shows when the game runs') : 'Off', E.sw(on, 'Show overlay', 'ov-toggle'))}
       <div class="ov ovmini sz-s${on ? '' : ' off'}" aria-label="Overlay preview">${E.overlayRows(cfg, st, !snap.gameRunning, { divRate: snap.divRate })}</div>
-      <div class="row push" style="gap:8px"><button class="btn sm" data-act="ov-unlock">${snap.overlayUnlocked ? ic.lock() + ' Lock' : ic.unlock() + ' Unlock to move'}</button>${E.kbd(cfg.hotkeys.unlockOverlay)}</div>`;
+      <div class="row push" style="gap:8px"><button class="btn sm" data-act="ov-unlock">${snap.overlayUnlocked ? ic.lock() + ' Lock' : ic.unlock() + ' Unlock to move'}</button>${E.hotkey(cfg, snap, 'unlockOverlay')}</div>`;
   }
 
   // ---------- Awakened PoE Trade ----------

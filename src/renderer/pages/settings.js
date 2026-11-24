@@ -99,7 +99,8 @@
     const st = snap.hotkeys || {};
     const msg = { taken: 'Another app already uses this combination. Pick a different one.', duplicate: 'Two actions use the same combination.', invalid: 'Windows does not accept this combination.' };
     const row = (key, title, desc) => {
-      const acc = cfg.hotkeys[key], rec = ui.recording === key, err = msg[st[key]];
+      const acc = cfg.hotkeys[key], rec = ui.recording === key;
+      const err = st[key] === 'game' ? `Path of Exile uses this combination (${E.esc((snap.hotkeyGame || {})[key] || 'one of your game keys')}), so Exilogue leaves it to the game. Pick a different one.` : msg[st[key]];
       const cap = rec ? `<button class="hk rec" data-hk="${key}" aria-label="Recording ${title}. Press a combination, Escape cancels."><span class="dotrec" aria-hidden="true"></span>Press a combination…</button>`
         : `<button class="hk${err ? ' err' : ''}${acc ? '' : ' hk-none'}" data-hk="${key}" aria-label="${title}: ${acc || 'none'}. Click to record a new combination.">${acc ? acc.split('+').map(k => `<span class="kbd">${E.esc(k)}</span>`).join('<span class="plus" aria-hidden="true">+</span>') : '<span class="sub">+ Click to set a key</span>'}</button>`;
       return `<section class="setrow"><div><h2>${title}</h2><p>${desc}</p></div>
@@ -113,7 +114,7 @@
       row('weSync', 'Sync & export (Wealthy Exile)', 'Sync and export in your open Wealthy Exile tab, without leaving the game. With no tab open it does nothing, and the overlay (when it is on) says so.') +
       row('sheetWindow', 'Cheat sheet window', 'Brings the cheat sheet window over the game, without taking the keyboard from it. Press again to close it.') +
       row('essenceOverlay', 'Essence upgrade overlay', 'Open your essence stash tab and press it: marks what is worth upgrading. Press again to hide.') +
-      `<div class="note" style="margin-top:14px">${ic.info()}<span>Numpad keys and F13–F24 work on their own (handy for macro keys; numpad needs Num Lock on). Other keys need Ctrl, Alt or Shift, so normal typing stays free. A hotkey here is taken from the game while Exilogue runs.</span></div>`;
+      `<div class="note" style="margin-top:14px">${ic.info()}<span>Hotkeys work while Path of Exile runs; outside the game the keys stay free for other programs. Exilogue never takes a key the game uses (your own keybinds, plus copy and paste of item text). Numpad keys and F13–F24 work on their own (handy for macro keys; numpad needs Num Lock on). Other keys need Ctrl, Alt or Shift, so normal typing stays free.</span></div>`;
   }
 
   function storage(ui) {

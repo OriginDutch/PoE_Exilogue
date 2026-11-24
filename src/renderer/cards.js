@@ -229,13 +229,13 @@
     if (size === 'xs') return xs(def, `<span class="pill${on ? ' ok' : ''}"><span class="d" aria-hidden="true"></span>${on ? 'On' : 'Off'}</span>`);
     const sw = E.sw(on, 'Show overlay', 'ov-toggle');
     const unlock = `<button class="btn sm" data-act="ov-unlock">${snap.overlayUnlocked ? ic.lock() + ' Lock' : ic.unlock() + ' Unlock to move'}</button>`;
-    const hk = E.kbd(cfg.hotkeys.unlockOverlay);
+    const hk = E.hotkey(cfg, snap, 'unlockOverlay');
     if (size === 's') return `${head(def, { right: sw })}<div class="row between push">${unlock}${hk}</div>`;
     const paused = !snap.gameRunning;
     const preview = E.overlayRows ? `<div class="ov ovmini sz-s${on ? '' : ' off'}" aria-label="Overlay preview">${E.overlayRows(cfg, st, paused, { divRate: snap.divRate })}</div>` : '';
     if (size === 'm') return `${head(def, { right: sw })}${preview}`;
-    if (size === 'l') return `${head(def, { right: sw })}<div style="display:grid;grid-template-columns:1.2fr 1fr;gap:20px;flex:1;min-height:0">${preview}<div style="display:flex;flex-direction:column;gap:8px;justify-content:flex-end">${unlock}<div class="row between"><span class="sub">Toggle</span>${E.kbd(cfg.hotkeys.toggleOverlay) || '<span class="sub">–</span>'}</div></div></div>`;
-    return `${head(def, { lg: true, right: sw, size: 20 })}${preview}<div class="row" style="gap:16px;flex-wrap:wrap"><span class="sub">Text size ${o.size.toUpperCase()}</span><span class="sub">Toggle ${cfg.hotkeys.toggleOverlay || '—'}</span></div><div class="row between push">${unlock}${hk}</div>`;
+    if (size === 'l') return `${head(def, { right: sw })}<div style="display:grid;grid-template-columns:1.2fr 1fr;gap:20px;flex:1;min-height:0">${preview}<div style="display:flex;flex-direction:column;gap:8px;justify-content:flex-end">${unlock}<div class="row between"><span class="sub">Toggle</span>${E.hotkey(cfg, snap, 'toggleOverlay')}</div></div></div>`;
+    return `${head(def, { lg: true, right: sw, size: 20 })}${preview}<div class="row" style="gap:16px;flex-wrap:wrap"><span class="sub">Text size ${o.size.toUpperCase()}</span><span class="sub row" style="gap:6px">Toggle ${E.hotkey(cfg, snap, 'toggleOverlay')}</span></div><div class="row between push">${unlock}${hk}</div>`;
   }
 
   // ---------- Loot filter ----------

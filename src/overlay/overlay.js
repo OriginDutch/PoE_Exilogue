@@ -19,7 +19,7 @@
     const cls = `app ov ovt-${cfg.ui.darkPalette} sz-${o.size} f-${font}${paused ? ' paused' : ''}${unlocked ? ' unl' : ''}`;
     const rows = E.overlayRows(cfg, snap.stats, paused, { divRate: snap.divRate });
     const bp = !unlocked && !paused && snap.breakPrompt && snap.breakPrompt.revealed ? snap.breakPrompt : null; // after the big splash
-    const brkHtml = bp ? E.breakPrompt(cfg, bp) : '';
+    const brkHtml = bp ? E.breakPrompt(cfg, bp, snap.hotkeys) : '';
     // One sound per "Take a break?" (a new prompt has a new shownAt). The splash plays it; here only when there was none.
     if (bp && bp.shownAt !== chimedAt) {
       chimedAt = bp.shownAt;

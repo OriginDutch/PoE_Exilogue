@@ -244,7 +244,7 @@
 
   // ---------- Overlay ----------
   // One hotkey control everywhere: the keys when set, otherwise a "Set hotkey" chip in the same place.
-  const hk = (cfg, key, label) => cfg.hotkeys[key] ? `<button class="hkchip" data-nav="settings:hotkeys" title="Change in Settings › Hotkeys">${E.kbd(cfg.hotkeys[key])}</button>` : `<button class="hkchip hkchip-none" data-nav="settings:hotkeys" aria-label="Set a hotkey for ${label}">+ Set hotkey</button>`;
+  const hk = (cfg, key, label, snap = EX.state && EX.state.snap) => cfg.hotkeys[key] && !E.hkUsable(snap, key) ? `<button class="hkchip hkchip-bad" data-nav="settings:hotkeys" aria-label="Hotkey for ${label} not available">Not available</button>` : cfg.hotkeys[key] ? `<button class="hkchip" data-nav="settings:hotkeys" title="Change in Settings › Hotkeys">${E.kbd(cfg.hotkeys[key])}</button>` : `<button class="hkchip hkchip-none" data-nav="settings:hotkeys" aria-label="Set a hotkey for ${label}">+ Set hotkey</button>`;
   EX.overlayControls = (cfg, snap) => {
     const o = cfg.overlay;
     const b = cfg.breaks || { enabled: true, campaign: true, everyMin: 60 };
@@ -320,10 +320,10 @@
   };
 
   // "Take a break?" next to the overlay, same height as the timer row.
-  EX.breakPrompt = (cfg, bp) => {
+  EX.breakPrompt = (cfg, bp, status) => {
     if (!bp) return '';
-    const key = cfg.hotkeys && cfg.hotkeys.breakTaken;
-    return `<div class="r"><div class="k" style="color:var(--live)">Take a break?<b>${key ? E.esc(key) + ' = yes' : 'no hotkey set'}</b></div><div class="v">${E.hm(bp.sinceMs)}<small>since last</small></div></div>`;
+    const key = cfg.hotkeys && cfg.hotkeys.breakTaken && (!status || status.breakTaken === 'ok') ? cfg.hotkeys.breakTaken : null; // only a key that works
+    return `<div class="r"><div class="k" style="color:var(--live)">Take a break?<b>${key ? E.esc(key) + ' = yes' : cfg.hotkeys && cfg.hotkeys.breakTaken ? 'hotkey not available' : 'no hotkey set'}</b></div><div class="v">${E.hm(bp.sinceMs)}<small>since last</small></div></div>`;
   };
 
   EX.pages.overlay = {
@@ -352,7 +352,7 @@
       const w = snap.wealth || {}, ui = EX.ui, ws = EX.weSetup;
       const n = (v, d = 1) => v == null || !Number.isFinite(v) ? '–' : Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('en-US') : v.toFixed(Math.abs(v) >= 100 ? 0 : d);
       const live = w.scriptSeenAt && Date.now() - w.scriptSeenAt < 3 * 60e3;
-      const hk = (key, label) => cfg.hotkeys[key] ? `<button class="hkchip" data-nav="settings:hotkeys" title="Change in Settings › Hotkeys">${E.kbd(cfg.hotkeys[key])}</button>` : `<button class="hkchip hkchip-none" data-nav="settings:hotkeys" aria-label="Set a hotkey for ${label}">+ Set hotkey</button>`;
+      const hk = (key, label) => cfg.hotkeys[key] && !E.hkUsable(snap, key) ? `<button class="hkchip hkchip-bad" data-nav="settings:hotkeys" aria-label="Hotkey for ${label} not available">Not available</button>` : cfg.hotkeys[key] ? `<button class="hkchip" data-nav="settings:hotkeys" title="Change in Settings › Hotkeys">${E.kbd(cfg.hotkeys[key])}</button>` : `<button class="hkchip hkchip-none" data-nav="settings:hotkeys" aria-label="Set a hotkey for ${label}">+ Set hotkey</button>`;
       const ever = w.scriptEverAt || w.scriptSeenAt; // kept across restarts
       const connected = !!(ever || w.scriptVersion);
       const silent = connected && !live && ever && Date.now() - ever > 3 * 86400e3;

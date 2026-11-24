@@ -146,6 +146,7 @@
   }
 
   async function go(target) {
+    if (ui.recording) stopRecording(); // leaving mid-recording must not leave the hotkeys paused
     if (target.startsWith('settings')) {
       const tab = target.split(':')[1];
       if (tab) ui.settingsTab = tab;
@@ -359,6 +360,9 @@
     if (/^F([1-9]|1\d|2[0-4])$/.test(c)) return c;
     return CODE_MAP[c] || null;
   }
+  function stopRecording() { ui.recording = null; ej.pauseHotkeys(false); }
+  // Switching to another window (the game) while a key is being recorded cancels the recording.
+  window.addEventListener('blur', () => { if (ui.recording) { stopRecording(); render(true); } });
   window.addEventListener('keydown', e => {
     if (!ui.recording) return;
     e.preventDefault(); e.stopPropagation();
@@ -389,7 +393,7 @@
       if (full && state.snap.stats && state.snap.stats.eventSeq !== ui.eventSeq) loadEvents('new').then(() => render(true));
       return;
     }
-    if (ui.view === 'settings') { if (full) render(JSON.stringify([state.snap.hotkeys, state.snap.profileStatus, state.snap.update]) !== prevHk); return; }
+    if (ui.view === 'settings') { if (full) render(JSON.stringify([state.snap.hotkeys, state.snap.hotkeyGame, state.snap.profileStatus, state.snap.update]) !== prevHk); return; }
     if (full) render(page.data !== false); else if (page.live) render();
   }
   // Tool icons come separately (data: URLs, only when they change), not with every snapshot.
@@ -400,7 +404,7 @@
     ej.icons().then(map => { state.icons = map || {}; renderSide(); if (!ui.editing && !document.hidden) render(true); });
   }
   ej.onSnapshot(s => {
-    const prevHk = JSON.stringify([state.snap && state.snap.hotkeys, state.snap && state.snap.profileStatus, state.snap && state.snap.update]);
+    const prevHk = JSON.stringify([state.snap && state.snap.hotkeys, state.snap && state.snap.hotkeyGame, state.snap && state.snap.profileStatus, state.snap && state.snap.update]);
     state.snap = s;
     // After a sync from the tile: say so once the new export has been picked up (gives up after 5 minutes).
     if (ui.weWaitSince) {
