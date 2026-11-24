@@ -492,3 +492,13 @@ html.no-motion .view{animation:none}
 .fs-dots{display:flex;gap:5px;justify-content:center;flex-wrap:wrap}
 .fs-dots i{width:6px;height:6px;border-radius:50%;background:var(--line2)}
 .fs-dots i.on{background:var(--live)}
+/* Connect Wealthy Exile */
+.ws-home{grid-template-columns:minmax(0,1fr) minmax(0,1.7fr);align-items:start}
+.ws-steps{gap:18px}
+.ws-steps li{align-items:start}
+.ws-steps b{color:var(--tx)}
+.ws-steps p{margin:4px 0 10px;font-size:13.5px;line-height:1.5;color:var(--tx2)}
+.ws-pick{display:flex;align-items:center;gap:10px}
+.ws-pic{display:block;width:100%;max-width:360px;height:auto;margin:2px 0 10px}
+.ws-addr{font-family:ui-monospace,Consolas,monospace;font-size:12px;padding:4px 8px;border-radius:6px;background:var(--card2);border:1px solid var(--line);color:var(--tx2);user-select:all;word-break:break-all}
+@media (max-width:900px){.ws-home{grid-template-columns:1fr}}

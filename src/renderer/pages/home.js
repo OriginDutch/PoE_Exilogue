@@ -10,7 +10,7 @@
     const upd = u && u.state === 'ready' ? `<div class="banner live" role="status"><span class="bi">${ic.refresh()}</span>
       <div class="grow"><div class="bt">Exilogue ${E.esc(u.next || '')} is ready</div><div class="sub">It installs by itself when you close Exilogue${snap.gameRunning ? '. Restarting is possible once the game is closed.' : ', or restart now.'}</div></div>
       ${snap.gameRunning ? '' : '<button class="btn p" data-act="update-install">Restart and update</button>'}</div>` : '';
-    return corrupt + upd + bannersMain({ snap, cfg });
+    return corrupt + upd + EX.weSetup.homeOutdated(snap) + bannersMain({ snap, cfg }) + EX.weSetup.homeCard(snap, cfg, EX.ui);
   }
   function bannersMain({ snap, cfg }) {
     if (!cfg.ui.welcomeDone && !snap.paths.clientTxt) {

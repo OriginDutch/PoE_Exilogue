@@ -1,5 +1,6 @@
 'use strict';
-const { app, BrowserWindow, nativeImage, ipcMain, globalShortcut, shell, dialog, screen, nativeTheme, powerMonitor } = require('electron');
+const { app, BrowserWindow, nativeImage, ipcMain, globalShortcut, shell, dialog, screen, nativeTheme, powerMonitor, clipboard } = require('electron');
+const { defaultBrowser, TAMPERMONKEY } = require('./browser');
 const path = require('path');
 const fs = require('fs');
 const { execFile, spawn } = require('child_process');
@@ -9,8 +10,7 @@ const { LeagueDb, checkFile } = require('./db');
 const { IconStore } = require('./icons');
 const { Wealth } = require('./wealth');
 const { NinjaPrice, ITEM_TYPES: NINJA_TYPES, SHEET_TYPES } = require('./ninja');
-const { EdgeWe } = require('./edge');
-const { shouldSync, WeSyncServer } = require('./wesync');
+const { shouldSync, WeSyncServer, PORT: WE_PORT } = require('./wesync');
 const { lastBuild } = require('./pob');
 const { LogWatcher } = require('./logwatcher');
 const { parseLine } = require('../core/parser');
@@ -112,6 +112,9 @@ function sanitizeConfig() {
   c.goal.label = c.goal.id ? String(c.goal.label || '').slice(0, 80) : '';
   sanitizeSheets(c);
   c.weSync.everyMin = Math.min(180, Math.max(15, Math.round(Number(c.weSync.everyMin) || 30)));
+  // "Connect Wealthy Exile" steps: new = show them on Home once; skipped = later (Settings › Launch); done = connected.
+  // Set at startup: new for a fresh install, done for one from before these steps (see app ready).
+  if (!['new', 'skipped', 'done'].includes(c.weSync.setup)) c.weSync.setup = 'done';
   c.launch.custom = (Array.isArray(c.launch.custom) ? c.launch.custom : []).filter(x => x && typeof x.target === 'string' && x.target.trim()).slice(0, 20)
     .map((x, i) => ({ id: String(x.id || 'c' + Date.now().toString(36) + i).slice(0, 40), name: String(x.name || '').slice(0, 60) || path.basename(x.target.trim()).replace(/\.exe$/i, ''), target: x.target.trim().slice(0, 500), on: x.on !== false }));
   { const d = parseFloat(String(c.goal.divines ?? '').replace(',', '.')); c.goal.divines = Number.isFinite(d) && d > 0 ? d : null; }
@@ -370,7 +373,8 @@ function snapshot() {
     stateCorrupt: leagueDb && leagueDb.corruptFile ? path.basename(leagueDb.corruptFile) : null,
     stats: tracker ? tracker.snapshot(Date.now()) : null,
     iconsRev: icons ? icons.rev : 0,
-    wealth: wealth ? { ...ws, history: wealthHistory(), syncAt: wealthSyncAt, syncEvery: WEALTH_SYNC_MS, manualExpiredAt: weManualExpiredAt, failAt: weFailAt, scriptSeenAt: weScriptSeenAt, bgSyncAt: weBgSyncAt, serverError: weServer && weServer.error } : null,
+    wealth: wealth ? { ...ws, history: wealthHistory(), syncAt: wealthSyncAt, syncEvery: WEALTH_SYNC_MS, manualExpiredAt: weManualExpiredAt, failAt: weFailAt, scriptSeenAt: weScriptSeenAt, bgSyncAt: weBgSyncAt, serverError: weServer && weServer.error,
+      scriptVersion: weScriptVersion, scriptShipped: USERSCRIPT_VERSION, scriptOld: !!(weScriptVersion && USERSCRIPT_VERSION && (weScriptVersion === '1.x' || olderVersion(weScriptVersion, USERSCRIPT_VERSION))) } : null,
     divRate: sessionDivRate(),
     breakPrompt,
     goal: goalInfo(),
@@ -391,7 +395,7 @@ const sentKey = new Map(); // webContents id -> data key last sent
 const hiddenWc = new Set(); // windows whose page reports it can't be seen (covered by the game, etc.)
 let lastIdleTick = 0;
 function statusKey() {
-  return JSON.stringify([gen, updateState, breakPrompt && [breakPrompt.shownAt, breakPrompt.revealed], ninja.rev, sheetCache.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [(weManualTick(), wealth.rev), wealth.lastError, wealthSyncAt, weBgSyncAt, weManualExpiredAt, weFailAt, Math.floor(weScriptSeenAt / 300000)] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, overlayUnlocked,
+  return JSON.stringify([gen, updateState, breakPrompt && [breakPrompt.shownAt, breakPrompt.revealed], ninja.rev, sheetCache.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [(weManualTick(), wealth.rev), wealth.lastError, wealthSyncAt, weBgSyncAt, weManualExpiredAt, weFailAt, weScriptVersion, Math.floor(weScriptSeenAt / 300000)] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, overlayUnlocked,
     profileStatus, neversinkLatest, config.data.neversink, pathsCache, leagueDb && leagueDb.corruptFile]);
 }
 function broadcast() {
@@ -710,8 +714,26 @@ function weFailed(id) {
   const wait = Math.min(5 * 60e3 * 2 ** (weBgFails - 1), every);
   weBgSyncAt = now - every + wait; // next background try in `wait`
 }
+// The userscript Exilogue ships (src/userscript). Tampermonkey installs and updates it from 127.0.0.1:47615, so the
+// script in the browser follows the installed Exilogue. weScriptVersion: what the running script reports (null = before 2.0).
+let weScriptVersion = null, weScriptText = null;
+const USERSCRIPT = path.join(__dirname, '..', 'userscript', 'exilogue.user.js');
+function userscriptText() {
+  if (weScriptText == null) { try { weScriptText = fs.readFileSync(USERSCRIPT, 'utf8'); } catch { weScriptText = ''; } }
+  return weScriptText;
+}
+const USERSCRIPT_VERSION = (() => { const m = /@version\s+([\d.]+)/.exec(userscriptText()); return m ? m[1] : null; })();
+// a < b for dotted versions ("1.8" < "2.0" < "2.0.1")
+const olderVersion = (a, b) => {
+  const x = String(a || '0').split('.').map(Number), y = String(b || '0').split('.').map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d < 0; }
+  return false;
+};
 function startWeSync() {
-  weServer = new WeSyncServer({ decide: weDecide, onAsk: () => { weScriptSeenAt = Date.now(); }, onFailed: weFailed });
+  weServer = new WeSyncServer({ decide: weDecide, onAsk: (_go, v) => {
+    weScriptSeenAt = Date.now(); weScriptVersion = v || '1.x';
+    if (config.data.weSync.setup !== 'done') { config.data.weSync.setup = 'done'; config.saveSoon(); broadcastConfig(); }
+  }, onFailed: weFailed, script: userscriptText });
   weServer.start();
 }
 
@@ -1444,11 +1466,20 @@ function setupIpc() {
     catch { return { ok: false, error: 'Could not load the item lists from poe.ninja. Try again in a minute.' }; }
   });
   ipcMain.handle('sheet:refresh', () => sheetTick(true));
-  // Wealthy Exile through Edge (test): Edge with its own Exilogue profile, steered over DevTools. No extension.
-  let edgeWe = null;
-  const edgeB = () => (edgeWe = edgeWe || new EdgeWe({ profileDir: path.join(app.getPath('userData'), 'edge-profile'), downloads: app.getPath('downloads') }));
-  ipcMain.handle('we:open', () => edgeB().open());
-  ipcMain.handle('we:test', async () => { const r = await edgeB().syncExport(); if (r.ok && wealth) setTimeout(() => wealth.scan(), 3000); return r; });
+  // "Connect Wealthy Exile": which browser opens links, and the three things the steps open.
+  ipcMain.handle('we:setup-info', async () => ({ browser: await defaultBrowser() }));
+  ipcMain.handle('we:setup-open', (_e, what, browser) => {
+    if (what === 'store' && TAMPERMONKEY[browser]) { shell.openExternal(TAMPERMONKEY[browser]); return true; }
+    if (what === 'script' && weServer && !weServer.error && userscriptText()) { shell.openExternal(`http://127.0.0.1:${WE_PORT}/exilogue.user.js`); return true; }
+    if (what === 'site') { shell.openExternal(WEALTH_URL); return true; }
+    return false;
+  });
+  // Browsers don't let other programs open their chrome:// / edge:// pages, so that address is copied instead.
+  ipcMain.handle('we:setup-copy', (_e, browser) => {
+    const id = { chrome: 'chrome://extensions/?id=dhdgffkkebhmkfjojejmpbldmpobfkfo', edge: 'edge://extensions/?id=iikmkjmpaadaobahmlepeloendndfphd' }[browser];
+    if (!id) return false; clipboard.writeText(id); return true;
+  });
+  ipcMain.handle('we:setup-skip', () => { if (config.data.weSync.setup === 'new') { config.data.weSync.setup = 'skipped'; config.saveSoon(); broadcastConfig(); } return true; });
   ipcMain.handle('win:state', () => ({ maximized: !!(dashWin && dashWin.isMaximized()) }));
 }
 
@@ -1469,12 +1500,20 @@ app.whenReady().then(() => {
   const dir = app.getPath('userData');
   // Break sound: on for an install that already had a config before the option existed, off for a new install.
   const cfgFile = path.join(dir, 'config.json');
-  let soundMigrate = false;
-  try { const raw = JSON.parse(fs.readFileSync(cfgFile, 'utf8')); soundMigrate = !(raw && raw.breaks && raw.breaks.sound); } catch { /* new install */ }
+  let soundMigrate = false, freshInstall = true, setupMigrate = false;
+  try {
+    const raw = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
+    freshInstall = false;
+    soundMigrate = !(raw && raw.breaks && raw.breaks.sound);
+    setupMigrate = !(raw && raw.weSync && raw.weSync.setup);
+  } catch { /* new install (or unreadable config: treated as new) */ }
   config = new JsonStore(cfgFile, DEFAULT_CONFIG);
+  // "Connect Wealthy Exile" on Home: only for a fresh install. Installs from before these steps skip it (Settings › Launch has it).
+  if (freshInstall) config.data.weSync.setup = 'new';
+  else if (setupMigrate) config.data.weSync.setup = 'done';
   if (soundMigrate) { config.data.breaks.sound = { on: true, volume: 50, file: 'shrine' }; } // Marcel's pick for his own install
   sanitizeConfig();
-  if (soundMigrate) config.save();
+  if (soundMigrate || freshInstall || setupMigrate) config.save();
   seedSheets();
   leagueDb = new LeagueDb(path.join(dir, 'league.db'));
   if (!config.data.io.since) { config.data.io.since = Date.now(); config.save(); }
