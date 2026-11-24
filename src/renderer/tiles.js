@@ -187,12 +187,12 @@
 
   // ---------- Loot filter ----------
   function filter({ snap }) {
-    const ns = snap.neversink || {}, latest = ns.latest, outdated = latest && ns.lastSyncedTag !== latest.tag;
+    const ns = snap.neversink || {}, latest = ns.latest, outdated = latest && ns.remind !== false && ns.lastSyncedTag !== latest.tag;
     const notes = latest && latest.notes ? latest.notes.slice(0, 3) : [];
-    const pillTxt = !latest ? '' : outdated ? '<span class="pill acc">New version</span>' : '<span class="pill">Up to date</span>';
+    const pillTxt = ns.remind === false ? '<span class="pill">Reminders off</span>' : !latest ? '' : outdated ? '<span class="pill acc">New version</span>' : '<span class="pill">Up to date</span>';
     return `${head('filter', 'Loot filter', 'NeverSink', pillTxt)}
-      <div style="font-weight:600">${!latest ? 'Checks GitHub when online' : outdated ? `${esc(latest.tag)} is out` : `On ${esc(latest.tag)}`}</div>
-      ${!latest ? '' : `<div class="sub">${!ns.lastSyncedTag ? 'Not marked as synced yet' : outdated ? `You're on ${esc(ns.lastSyncedTag)}${ns.syncedAt ? ', synced ' + E.ago(ns.syncedAt) : ''}` : ns.syncedAt ? 'Synced ' + E.ago(ns.syncedAt) : 'Synced'}</div>`}
+      <div style="font-weight:600">${!latest ? 'Checks GitHub when online' : ns.remind === false ? `Latest is ${esc(latest.tag)}` : outdated ? `${esc(latest.tag)} is out` : `On ${esc(latest.tag)}`}</div>
+      ${!latest || ns.remind === false ? '' : `<div class="sub">${!ns.lastSyncedTag ? 'Not marked as synced yet' : outdated ? `You're on ${esc(ns.lastSyncedTag)}${ns.syncedAt ? ', synced ' + E.ago(ns.syncedAt) : ''}` : ns.syncedAt ? 'Synced ' + E.ago(ns.syncedAt) : 'Synced'}</div>`}
       ${notes.length ? `<ul class="dnotes">${notes.map(n => `<li class="ell">${esc(n)}</li>`).join('')}</ul>` : ''}
       <div class="row push" style="gap:8px"><button class="btn sm" data-url="https://www.filterblade.xyz">Open FilterBlade ${ic.ext()}</button>${outdated ? '<button class="btn sm" data-act="ns-synced">I\'ve synced</button>' : ''}</div>`;
   }
@@ -249,12 +249,9 @@
   // One fun fact about your league, a new one every minute.
   function fun({ snap }) {
     const f = (snap.league && snap.league.fun) || [];
-    if (!f.length) return `${head('fun', 'League fact', 'changes every minute', '', false)}<div class="sub">Facts about your league show up once you run maps.</div>`;
-    const i = Math.floor(Date.now() / 60000) % f.length;
-    const dots = f.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('');
-    return `${head('fun', 'League fact', `${i + 1} of ${f.length} · changes every minute`, '', false)}
-      <div class="fs"><b>${esc(f[i].text)}</b><span class="sub">${esc(f[i].sub)}</span></div>
-      <div class="fs-dots" aria-hidden="true">${dots}</div>`;
+    if (!f.length) return `${head('fun', 'League facts', 'this league', '', false)}<div class="sub">Facts about your league show up once you run maps.</div>`;
+    return `${head('fun', 'League facts', 'this league', '', false)}
+      <div class="fslist">${f.slice(0, 4).map(x => `<div><b>${esc(x.text)}</b><span class="sub">${esc(x.sub)}</span></div>`).join('')}</div>`;
   }
 
   EX.TILES = {
@@ -269,7 +266,7 @@
     apt: { name: 'Price check', render: apt },
     today: { name: 'Today', render: today },
     days: { name: 'Maps per day', wide: true, render: days },
-    fun: { name: 'League fact', render: fun },
+    fun: { name: 'League facts', render: fun },
   };
   EX.TILE_ORDER = ['poe', 'wealthy', 'ninja', 'maps', 'pob', 'campaign', 'filter', 'overlay', 'apt', 'today', 'days', 'fun'];
   // The user's order (from Edit layout), limited to these tiles, with any new tile added at its default place.

@@ -243,7 +243,7 @@
     const def = CARDS.filter;
     const ns = snap.neversink || {};
     const latest = ns.latest;
-    const outdated = latest && latest.tag !== ns.lastSyncedTag;
+    const outdated = latest && ns.remind !== false && latest.tag !== ns.lastSyncedTag;
     const pill = !latest ? '' : outdated ? '<span class="pill acc">Update</span>' : '<span class="pill">Up to date</span>';
     if (size === 'xs') return xs(def, pill);
     const ver = latest ? `<div><div class="row" style="gap:8px"><span style="font-size:20px;font-weight:600">${E.esc(latest.tag)}</span>${pill}</div>

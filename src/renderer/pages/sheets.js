@@ -1,7 +1,7 @@
 'use strict';
 // Cheat sheets: manage your sheets (list left, the chosen sheet right). The sheet window shows them as tabs.
 (function () {
-  const E = EX;
+  const E = EX, ic = EX.icon;
   EX.pages = EX.pages || {};
   const VIEWS = [['ratio', 'Ratio (1 : 5.5)'], ['each', 'Each (= 0.29)'], ['stack', 'Per stack (10× = 2.9)']];
   const TYPE_LABEL = t => t.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^Unique /, 'Unique ');
@@ -56,7 +56,7 @@
           <div class="field"><label class="lbl" for="cs-sort">Order</label><select id="cs-sort" class="select" data-csf="sort">${opt([['manual', 'Your order'], ['value', 'By value, highest first']], sh.sort)}</select></div>
         </div>
         <div class="row" style="gap:8px;flex-wrap:wrap">
-          <button class="btn" data-cs="show" ${cfg.sheets.active === sh.id ? 'disabled' : ''}>Show in window</button>
+          ${cfg.sheets.active === sh.id ? `<span class="st ok">${ic.check()} Front tab in the sheet window</span>` : '<button class="btn" data-cs="show">Make it the front tab</button>'}
           <button class="btn" data-cs="dup">Duplicate</button>
           <button class="btn q" data-cs="del">Delete sheet</button></div>`;
 
@@ -74,16 +74,22 @@
         return `<tr>
           <td class="cs-ic">${icon ? `<img src="${E.esc(icon)}" alt="">` : '<span class="sh-noimg" aria-hidden="true"></span>'}</td>
           <td class="cs-nm"><b>${E.esc(it.name)}</b><span class="sub">${E.esc([it.label, TYPE_LABEL(it.type)].filter(Boolean).join(' · '))}</span></td>
-          <td class="num"><span class="sub">poe.ninja</span><br>${p.chaos != null ? fmt(p.chaos) + 'c' : '–'}</td>
-          <td><input class="input cs-ov" type="number" min="0" step="any" inputmode="decimal" placeholder="poe.ninja" value="${it.override ?? ''}" data-csi="override" data-i="${i}" aria-label="Your own value for ${E.esc(it.name)}, in chaos (empty: poe.ninja)"></td>
-          <td><select class="select" data-csi="view" data-i="${i}" aria-label="Show ${E.esc(it.name)} as">${opt([['', 'Sheet default'], ...VIEWS], it.view || '')}</select></td>
+          <td class="num">${it.override != null ? `<s class="dim">${p.chaos != null ? fmt(p.chaos) + 'c' : '–'}</s>` : (p.chaos != null ? fmt(p.chaos) + 'c' : '–')}</td>
+          <td><input class="input cs-ov" type="number" min="0" step="any" inputmode="decimal" placeholder="–" value="${it.override ?? ''}" data-csi="override" data-i="${i}" aria-label="Your own value for ${E.esc(it.name)}, in chaos (empty: poe.ninja)"></td>
+          <td><select class="select select-ghost" data-csi="view" data-i="${i}" aria-label="Show ${E.esc(it.name)} as">${opt([['', 'Sheet default'], ...VIEWS], it.view || '')}</select></td>
           <td class="cs-act"><button class="btn i sm" data-cs="up" data-i="${i}" aria-label="Move ${E.esc(it.name)} up" ${i ? '' : 'disabled'}>↑</button><button class="btn i sm" data-cs="down" data-i="${i}" aria-label="Move ${E.esc(it.name)} down" ${i < sh.items.length - 1 ? '' : 'disabled'}>↓</button><button class="btn i sm" data-cs="rm" data-i="${i}" aria-label="Remove ${E.esc(it.name)}">×</button></td></tr>`;
       }).join('');
-      const table = sh.items.length ? `<table class="cs-tbl"><thead><tr><th></th><th>Item</th><th class="num">Price</th><th>Your value (chaos)</th><th>Show as</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+      const table = sh.items.length ? `<table class="cs-tbl"><thead><tr><th></th><th>Item</th><th class="num">poe.ninja</th><th>Your price (c)</th><th>Show as</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
         : '<div class="empty"><b>No items yet</b><span>Search above to add some.</span></div>';
       const main = `<section class="box cs-main"><div class="bh"><h2>${E.esc(sh.name)}</h2><span class="sub">${info.at ? 'poe.ninja prices from ' + E.esc(E.ago(info.at)) : 'Loading prices…'}</span></div>
         ${settings}<div class="hr"></div>${add}${table}</section>`;
-      return head + `<div class="cs-grid">${side}${main}</div>`;
+      // What the sheet window shows, right under the list of sheets.
+      const ordered = sh.sort === 'value' ? sh.items.slice().sort((x, y) => ((y.override ?? (info.prices[y.type + ':' + y.id] || {}).chaos) || 0) - ((x.override ?? (info.prices[x.type + ':' + x.id] || {}).chaos) || 0)) : sh.items;
+      const pv = ordered.slice(0, 6).map(it => { const k = it.type + ':' + it.id, p = info.prices[k] || {}; const v = it.override ?? p.chaos, view = it.view || sh.view, u = sh.unit === 'divine' ? (v != null && info.divineChaos ? v / info.divineChaos : null) : v;
+        const txt = u == null ? '–' : view === 'each' ? '= ' + fmt(u) : view === 'stack' ? sh.stack + '× = ' + fmt(u * sh.stack) : u >= 1 ? '1 : ' + fmt(u) : fmt(1 / u) + ' : 1';
+        return `<div class="cs-pv-row"><span class="sh-noimg" aria-hidden="true"></span><span class="ell">${E.esc(it.name)}</span><b>${txt}</b></div>`; }).join('');
+      const preview = `<section class="box cs-prev"><div class="bh"><h2>In the window</h2><span class="sub">${sh.items.length > 6 ? 'first 6 of ' + sh.items.length : ''}</span></div><div class="cs-pv">${pv || '<div class="sub">Add items to see them here.</div>'}</div></section>`;
+      return head + `<div class="cs-grid"><div style="display:flex;flex-direction:column;gap:16px">${side}${preview}</div>${main}</div>`;
     },
 
     mount(el) {

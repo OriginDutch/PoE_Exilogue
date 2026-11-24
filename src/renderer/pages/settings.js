@@ -1,27 +1,29 @@
 'use strict';
 (function () {
   const E = EX, ic = EX.icon;
-  const TABS = [['appearance', 'Appearance'], ['paths', 'Paths'], ['league', 'League'], ['launch', 'Launch'], ['hotkeys', 'Hotkeys'], ['storage', 'Storage & backups']];
+  const TABS = [['appearance', 'Appearance'], ['paths', 'Paths'], ['league', 'League'], ['launch', 'Launch'], ['hotkeys', 'Hotkeys'], ['storage', 'Storage & backups'], ['about', 'About & updates']];
 
   const mock = pal => `<div class="mock t-${pal}" aria-hidden="true"><div class="ms"><i class="a"></i><i></i><i></i><i></i></div><div class="mc"><div class="k poe"><div class="ln" style="width:60%"></div><div class="ln m"></div><div class="bt"></div></div><div class="k"><div class="dot"></div><div class="ln m"></div><div class="ln" style="width:50%"></div></div></div></div>`;
   const opt = (name, value, label, checked) => `<label class="opt"><input type="radio" name="${name}" value="${value}" data-pal="${name}" ${checked ? 'checked' : ''}>${mock(value)}<div class="nm">${label}<span class="on">${ic.check(12)}</span></div></label>`;
 
+  // Settings › About & updates: the version, its update state and Check now.
   function updatesRow(snap) {
     const u = snap.update || { state: 'off' };
-    const st = { off: 'This copy doesn\'t update itself (installed versions do). Install Exilogue with the setup file to get updates.',
-      checking: 'Checking for updates…', none: 'Up to date.' + (u.at ? ' Checked ' + E.ago(u.at) + '.' : ''),
-      downloading: `Downloading version ${E.esc(u.next || '')}${u.pct ? ' · ' + u.pct + '%' : ''}…`,
-      ready: `Version ${E.esc(u.next || '')} is ready. It installs when you close Exilogue.`,
-      error: `Couldn't check for updates: ${E.esc(u.error || 'unknown error')}` }[u.state] || '';
-    return `<section class="setrow"><div><h2>Updates</h2><p>Exilogue ${E.esc(u.version || '')}. New versions come from GitHub, download in the background and install when you close Exilogue, never while the game runs.</p></div>
-      <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-start"><span class="${u.state === 'error' ? 'st no' : 'muted'}" style="white-space:normal">${st}</span>
-        <div class="row" style="gap:8px">${u.state === 'ready' ? `<button class="btn p" data-act="update-install" ${snap.gameRunning ? 'disabled' : ''}>Restart and update</button>${snap.gameRunning ? '<span class="sub">after you close the game</span>' : ''}` : u.state !== 'off' ? '<button class="btn" data-act="update-check">Check now</button>' : ''}</div></div></section>`;
+    const pill = { checking: 'Checking…', none: 'Up to date', downloading: `Downloading ${E.esc(u.next || '')}${u.pct ? ' · ' + u.pct + '%' : ''}`, ready: `${E.esc(u.next || '')} is ready`, error: 'Could not check' }[u.state];
+    const detail = u.state === 'off' ? 'This copy doesn\'t update itself (installed versions do). Install Exilogue with the setup file to get updates.'
+      : u.state === 'error' ? `Couldn't check for updates: ${E.esc(u.error || 'unknown error')}` : u.state === 'ready' ? 'It installs when you close Exilogue, or now with Restart and update.' : '';
+    return `<section class="setrow"><div><h2>Exilogue ${E.esc(u.version || '')}</h2><p>New versions come from GitHub. They download in the background and install when you close Exilogue, never while the game runs.</p></div>
+      <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-start">
+        ${pill ? `<span class="row" style="gap:10px;flex-wrap:wrap"><span class="pill${u.state === 'ready' ? ' acc' : ''}">${pill}</span>${u.at && u.state !== 'checking' ? `<span class="sub">checked ${E.ago(u.at)}</span>` : ''}</span>` : ''}
+        ${detail ? `<span class="${u.state === 'error' ? 'st no' : 'muted'}" style="white-space:normal">${detail}</span>` : ''}
+        <div class="row" style="gap:8px;flex-wrap:wrap">${u.state === 'ready' ? `<button class="btn p" data-act="update-install" ${snap.gameRunning ? 'disabled' : ''}>Restart and update</button>${snap.gameRunning ? '<span class="sub">after you close the game</span>' : ''}` : u.state !== 'off' ? `<button class="btn" data-act="update-check" ${u.state === 'checking' || u.state === 'downloading' ? 'disabled' : ''}>Check now</button>` : ''}<button class="btn q" data-url="https://github.com/OriginDutch/PoE_Exilogue/releases">What's new ${ic.ext()}</button></div></div></section>`;
   }
+
 
   function appearance(cfg, snap) {
     const u = cfg.ui;
     const fonts = [['source', 'Source Sans 3', "'Source Sans 3', sans-serif"], ['bahnschrift', 'Bahnschrift', "Bahnschrift, Barlow, sans-serif"], ['inter', 'Inter', 'Inter, sans-serif'], ['segoe', 'Segoe UI', "'Segoe UI Variable', 'Segoe UI', sans-serif"]];
-    return (snap ? updatesRow(snap) : '') + `<section class="setrow"><div><h2>Theme</h2><p>System follows Windows. Right now Windows is set to ${cfg.systemDark ? 'dark' : 'light'}.</p></div>
+    return `<section class="setrow"><div><h2>Theme</h2><p>System follows Windows. Right now Windows is set to ${cfg.systemDark ? 'dark' : 'light'}.</p></div>
         <div role="radiogroup" aria-label="Theme" class="seg" style="align-self:start">${[['system', 'System'], ['dark', 'Dark'], ['light', 'Light']].map(([v, l]) => `<label><input type="radio" name="mode" value="${v}" data-theme ${u.theme === v ? 'checked' : ''}>${l}</label>`).join('')}</div></section>
       <section class="setrow"><div><h2>Dark palette</h2><p>Used in dark mode, and in System mode when Windows is dark. Light mode uses Cool Paper.</p></div>
         <div class="opts" role="radiogroup" aria-label="Dark palette">${opt('darkPalette', 'night', 'Umbra Night', u.darkPalette === 'night')}${opt('darkPalette', 'spectral', 'Spectral Teal', u.darkPalette === 'spectral')}${opt('darkPalette', 'silver', 'Silver &amp; Ink', u.darkPalette === 'silver')}</div></section>
@@ -109,6 +111,7 @@
       row('focusDashboard', 'Focus Exilogue', 'Bring this window to the front.') +
       row('breakTaken', 'I took a break', 'Answers "Take a break?" with yes, or marks a break you took yourself.') +
       row('weSync', 'Sync & export (Wealthy Exile)', 'Sync and export in your open Wealthy Exile tab, without leaving the game. With no tab open it does nothing, and the overlay (when it is on) says so.') +
+      row('sheetWindow', 'Cheat sheet window', 'Brings the cheat sheet window over the game, without taking the keyboard from it. Press again to close it.') +
       row('essenceOverlay', 'Essence upgrade overlay', 'Open your essence stash tab and press it: marks what is worth upgrading. Press again to hide.') +
       `<div class="note" style="margin-top:14px">${ic.info()}<span>Numpad keys and F13–F24 work on their own (handy for macro keys; numpad needs Num Lock on). Other keys need Ctrl, Alt or Shift, so normal typing stays free. A hotkey here is taken from the game while Exilogue runs.</span></div>`;
   }
@@ -170,7 +173,7 @@
     render({ cfg, snap, ui }) {
       const tab = ui.settingsTab || 'appearance';
       const body = tab === 'appearance' ? appearance(cfg, snap) : tab === 'paths' ? paths(cfg, snap) : tab === 'league' ? league(cfg, ui, snap)
-        : tab === 'storage' ? storage(ui) : tab === 'launch' ? launch(cfg, snap, ui)
+        : tab === 'storage' ? storage(ui) : tab === 'about' ? updatesRow(snap) : tab === 'launch' ? launch(cfg, snap, ui)
         : tab === 'overlay' ? `<div class="note" style="margin-top:20px">${ic.info()}<span>Overlay settings are on the Overlay page. <button class="lnk" data-nav="page:overlay">Open Overlay</button></span></div>` : hotkeys(cfg, snap, ui);
       return `<div style="max-width:1000px"><div class="head" style="margin-bottom:16px"><h1 class="h">Settings</h1></div>
         <div class="tabs" role="tablist" aria-label="Settings sections">${TABS.map(([k, l]) => `<button role="tab" aria-selected="${tab === k}" data-tab="${k}">${l}</button>`).join('')}</div>

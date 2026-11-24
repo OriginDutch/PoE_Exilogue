@@ -8,13 +8,14 @@
   const typeKey = t => (t === 'sessStart' || t === 'sessEnd' || t === 'break' || t === 'mark' ? 'session' : t);
   const cls = t => ({ level: 'e-lvl', death: 'e-death', act: 'e-act', campaign: 'e-camp', firstMap: 'e-map', tier: 'e-tier' }[t] || 'e-sess');
 
+  let oneChar = false; // when the page shows one character, its name isn't repeated on every row
   function line(ev) {
     const pill = v => `<span class="pill">${v}</span>`;
     switch (ev.type) {
-      case 'level': return [`Reached level ${ev.level}`, `${E.esc(ev.char)} · ${E.esc(ev.cls)}${ev.zone ? ' · in ' + E.esc(ev.zone) : ''}`, pill(ev.level)];
-      case 'death': return ['Died', `${E.esc(ev.zone || '?')}${ev.nth ? ` · death ${ev.nth} this session` : ''}${ev.char ? ' · ' + E.esc(ev.char) : ''}`, ev.tier ? pill('T' + ev.tier) : ev.act ? pill('Act ' + ev.act) : '<span></span>'];
-      case 'act': return [`Reached Act ${ev.act}`, ev.diff != null ? `Act ${ev.act - 1} split vs previous run <span class="${E.diffCls(ev.diff)}" style="font-weight:600">${E.diff(ev.diff)}</span>` : `${E.esc(ev.char || 'New character')} · ${E.fmt(ev.ms, { hours: true })}`, pill('Act ' + ev.act)];
-      case 'campaign': return ['Campaign completed', `${E.esc(ev.char || '?')} · Acts 1–10 in ${E.fmt(ev.ms, { hours: true })}${ev.diff != null ? ` · <span class="${E.diffCls(ev.diff)}" style="font-weight:600">${E.diff(ev.diff)}</span> vs previous run` : ''}`, `<span class="pill acc">${E.fmt(ev.ms, { hours: true })}</span>`, true];
+      case 'level': return [`Reached level ${ev.level}`, [oneChar ? '' : E.esc(ev.char) + ' · ' + E.esc(ev.cls), ev.zone ? 'in ' + E.esc(ev.zone) : ''].filter(Boolean).join(' · '), pill(ev.level)];
+      case 'death': return ['Died', `${E.esc(ev.zone || '?')}${ev.nth ? ` · death ${ev.nth} this session` : ''}${ev.char && !oneChar ? ' · ' + E.esc(ev.char) : ''}`, ev.tier ? pill('T' + ev.tier) : ev.act ? pill('Act ' + ev.act) : '<span></span>'];
+      case 'act': return [`Reached Act ${ev.act}`, ev.diff != null ? `Act ${ev.act - 1} split vs previous run <span class="${E.diffCls(ev.diff)}" style="font-weight:600">${E.diff(ev.diff)}</span>` : `${oneChar ? '' : E.esc(ev.char || 'New character') + ' · '}${E.fmt(ev.ms, { hours: true })}`, pill('Act ' + ev.act)];
+      case 'campaign': return ['Campaign completed', `${oneChar ? '' : E.esc(ev.char || '?') + ' · '}Acts 1–10 in ${E.fmt(ev.ms, { hours: true })}${ev.diff != null ? ` · <span class="${E.diffCls(ev.diff)}" style="font-weight:600">${E.diff(ev.diff)}</span> vs previous run` : ''}`, `<span class="pill acc">${E.fmt(ev.ms, { hours: true })}</span>`, true];
       case 'firstMap': return ['First map of the league', `Entered the Atlas${ev.tier ? ' · Tier ' + ev.tier : ''}`, ev.tier ? pill('T' + ev.tier) : '<span></span>', true];
       case 'tier': return ['New highest map tier', `Tier ${ev.tier}`, pill('T' + ev.tier)];
       case 'sessStart': return ['Session started', ev.char ? `${E.esc(ev.char)}${ev.level ? ' · level ' + ev.level : ''}` : 'Game opened', '<span></span>'];
@@ -63,6 +64,7 @@
       const { chars, current, who } = pick(st, ui);
       const filter = ui.eventsFilter || 'all';
       const shown = res.rows; // newest first, already filtered and limited
+      oneChar = who !== 'all';
       const chips = `<button class="fchip" aria-pressed="${filter === 'all'}" data-evfilter="all">All</button>` +
         TYPES.map(([k, l, c]) => `<button class="fchip" aria-pressed="${filter === k}" data-evfilter="${k}"><span class="d ${c}" style="background:var(--${c})" aria-hidden="true"></span>${l}</button>`).join('');
       const sel = `<label class="row" style="gap:8px"><span class="lbl">Character</span><select class="select" data-evchar>
@@ -89,7 +91,7 @@
       }
       return `<div style="max-width:920px">
         <div class="head" style="margin-bottom:18px"><div><div class="lbl" style="margin-bottom:6px">${E.esc(cfg.league.name)} · read from the game log</div><h1 class="h">Events</h1></div>${chars.length ? sel : ''}</div>
-        <div class="filters" role="group" aria-label="Filter by type">${chips}</div>${body}</div>`;
+        <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center"><div class="filters" role="group" aria-label="Filter by type">${chips}</div></div>${body}</div>`;
     },
   };
 })();

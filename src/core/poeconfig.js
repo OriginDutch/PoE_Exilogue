@@ -2,7 +2,7 @@
 // Reads the game's own settings file (Documents\My Games\Path of Exile\production_Config.ini) to find which screen
 // the game runs on: its [DISPLAY] section names the resolution and, after the graphics card, the monitor.
 
-// → { width, height, borderless, monitor } (fields missing when the file doesn't have them)
+// → { width, height, fullscreen, borderless, monitor } (fields missing when the file doesn't have them)
 function parseDisplay(text) {
   const out = {};
   let inDisplay = false;
@@ -16,6 +16,7 @@ function parseDisplay(text) {
     if (k === 'resolution_width' && /^\d+$/.test(v)) out.width = Number(v);
     else if (k === 'resolution_height' && /^\d+$/.test(v)) out.height = Number(v);
     else if (k === 'borderless_windowed_fullscreen') out.borderless = v === 'true';
+    else if (k === 'fullscreen') out.fullscreen = v === 'true';
     else if (k === 'adapter_name') { const i = v.lastIndexOf(' - '); if (i > 0) out.monitor = v.slice(i + 3).trim(); }
   }
   return out;
@@ -38,4 +39,7 @@ function matchDisplay(displays, info) {
   return null;
 }
 
-module.exports = { parseDisplay, matchDisplay };
+// Exclusive fullscreen: nothing (the overlay included) can be drawn over the game. Only true when the file says so.
+const exclusiveFullscreen = info => !!(info && info.fullscreen === true && info.borderless !== true);
+
+module.exports = { parseDisplay, matchDisplay, exclusiveFullscreen };

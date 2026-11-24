@@ -7,8 +7,8 @@
   const ph = (mono, title, sub, right) => `<div class="ph"><span class="logo lg" aria-hidden="true">${mono}</span>
     <div class="grow"><h1 class="h">${title}</h1>${sub ? `<div class="sub" style="margin-top:4px">${sub}</div>` : ''}</div>${right || ''}</div>`;
   const noLogBox = what => `<section class="box span2"><div class="empty"><b>No log yet</b><span>Exilogue needs Client.txt to ${what}. <button class="btn sm" data-nav="settings:paths" style="margin-left:6px">Settings › Paths</button></span></div></section>`;
-  const playBtn = snap => snap.gameRunning ? `<button class="btn lg" disabled>${ic.check()} Game running</button>`
-    : `<button class="btn p lg" data-act="play" ${snap.paths.poeExe ? '' : 'disabled'}>${ic.play()} Play</button>`;
+  const playBtn = snap => snap.gameRunning ? ''
+    : snap.paths.poeExe ? `<button class="btn p lg" data-act="play">${ic.play()} Play</button>` : `<span class="sub">Game path not set</span><button class="btn lg" data-nav="settings:paths">Set path</button>`;
   const status = snap => snap.gameRunning ? `<span class="pill ok"><span class="d" aria-hidden="true"></span>Running</span>` : `<span class="pill"><span class="d" aria-hidden="true"></span>Not running</span>`;
   const pathRow = (label, key, value, ok, hint) => `<section class="box span2"><div class="bh"><h2>${label}</h2>${E.pathSt(ok)}</div>
     <div class="row" style="gap:8px"><input class="input" aria-label="${label}" value="${E.esc(value)}" readonly><button class="btn" data-browse="${key}">${ic.folder()} Browse</button></div>${hint ? E.note(hint) : ''}</section>`;
@@ -19,8 +19,27 @@
     render({ snap, cfg, st }) {
       const ch = st && st.character, area = st && st.area;
       const chars = st ? Object.entries(st.chars || {}).map(([n, c]) => [n, { ...c, last: Math.max(c.lastSeen || 0, c.lastLogin || 0) || null }]).sort((a, b) => (b[1].last || 0) - (a[1].last || 0)) : [];
-      const played = st && st.played, deaths = st && st.deathsReported;
-      return ph('PE', 'Path of Exile', `${E.esc(cfg.league.name)} league`, `${status(snap)}${playBtn(snap)}`) + `<div class="cols">
+      const played = st && st.played, deathsRep = st && st.deathsReported;
+      // Level over time for this character, from its level-up and death events (loaded once per new event).
+      const U = EX.ui;
+      const lvKey = ch ? ch.name + '\u0000' + st.eventSeq : null;
+      if (ch && U.lvFor !== lvKey && !U.lvLoading) { U.lvLoading = true; ej.events({ char: ch.name, types: ['level', 'death'], limit: 1000 }).then(r => { U.lvRows = (r && r.rows || []).slice().reverse(); U.lvChar = ch.name; U.lvFor = lvKey; }).catch(() => { U.lvRows = []; U.lvChar = ch.name; U.lvFor = lvKey; }).finally(() => { U.lvLoading = false; EX.rerender && EX.rerender(); }); }
+      const lvRows = ch && U.lvChar === ch.name ? U.lvRows || [] : [];
+      const lv = lvRows.filter(e => e.type === 'level'), deaths = lvRows.filter(e => e.type === 'death');
+      let chart = '';
+      if (lv.length > 1) {
+        const t0 = Math.min(lv[0].t, ...deaths.map(e => e.t)), t1 = Math.max(lv[lv.length - 1].t, ...deaths.map(e => e.t)), W = 600, H = 150;
+        const X = t => ((t - t0) / (t1 - t0 || 1)) * W, Y = l => H - (l / 100) * H;
+        const d = lv.map((e, i) => `${i ? 'L' : 'M'}${X(e.t).toFixed(1)} ${Y(e.level).toFixed(1)}`).join(' ');
+        const dots = deaths.map(e => `<line x1="${X(e.t).toFixed(1)}" x2="${X(e.t).toFixed(1)}" y1="${H - 12}" y2="${H}" stroke="var(--bad)" stroke-width="2" vector-effect="non-scaling-stroke"><title>Died ${E.clock(e.t)}</title></line>`).join('');
+        chart = `<section class="box"><div class="bh"><h2>Level over time</h2><span class="sub">first level-up to the latest · red ticks: deaths</span></div>
+          <div class="lvwrap"><div class="lvy sub">${[80, 60, 40, 20].map(l => `<span style="top:${100 - l}%">${l}</span>`).join('')}</div>
+          <svg class="lvchart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Level ${lv[0].level} to ${lv[lv.length - 1].level}">
+            ${[20, 40, 60, 80].map(l => `<line x1="0" x2="${W}" y1="${Y(l)}" y2="${Y(l)}" stroke="var(--line)" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>`).join('')}
+            <path d="${d}" fill="none" stroke="var(--acc)" stroke-width="2" vector-effect="non-scaling-stroke"/>${dots}</svg></div>
+          <div class="lvax sub"><span>${E.date(t0)}</span><span>${E.date(t1)}</span></div></section>`;
+      } else chart = `<section class="box"><div class="bh"><h2>Level over time</h2></div><div class="empty"><b>${!ch ? 'No character yet' : U.lvChar !== ch.name || U.lvLoading && !lv.length ? 'Loading…' : 'Not enough level-ups yet'}</b><span>The curve of your current character shows up here after a few level-ups.</span></div></section>`;
+      return ph('PE', 'Path of Exile', `${E.esc(cfg.league.name)} league · your characters`, `${status(snap)}${snap.gameRunning ? '' : playBtn(snap)}`) + `<div class="charrow">
         <section class="box"><div class="bh"><h2>Character</h2><span class="sub">From the game log</span></div>
           ${ch ? `<div class="row" style="gap:20px;align-items:flex-end"><div class="lvl"><b>${ch.level}</b></div>
             <div class="grow"><div style="font-size:28px;font-weight:600;line-height:1.1" class="ell">${E.esc(ch.name)}</div><div class="muted" style="font-size:16px">${E.esc(ch.cls)}</div></div></div>`
@@ -30,13 +49,10 @@
             <div style="font-size:20px;font-weight:600;margin-top:4px" class="ell">${area && area.zone ? E.esc(area.zone) : '—'}</div>
             <div class="sub">${area ? [area.kind === 'map' && area.tier ? 'Tier ' + area.tier : area.act ? 'Act ' + area.act : '', area.level ? 'area level ' + area.level : ''].filter(Boolean).join(' · ') : ''}</div></div>
             <div style="text-align:right"><div class="lbl">Time in zone</div><div class="big" style="margin-top:6px">${area ? E.fmt(area.elapsedMs) : '–'}</div></div></div>
+          <div class="hr"></div>
+          <div class="row between"><span class="sub">/played <b style="color:var(--tx)">${played ? E.duration(played.seconds) : '–'}</b> · /deaths <b style="color:var(--tx)">${deathsRep ? deathsRep.count : '–'}</b></span><span class="sub">type /played or /deaths in game to update</span></div>
         </section>
-        <section class="box"><div class="bh"><h2>/played and /deaths</h2><span class="sub">Last result read from the log</span></div>
-          <dl class="kv"><dt>/played</dt><dd>${played ? E.duration(played.seconds) : '–'}</dd>
-            <dt>/deaths</dt><dd>${deaths ? deaths.count : '–'}</dd>
-            <dt>Read at</dt><dd>${played || deaths ? E.date(Math.max(played ? played.at : 0, deaths ? deaths.at : 0)) : '–'}</dd></dl>
-          ${E.note('Type <b style="color:var(--tx)">/played</b> or <b style="color:var(--tx)">/deaths</b> in game to update.')}
-        </section>
+        ${chart}</div><div class="cols" style="margin-top:16px">
         <section class="box span2"><div class="bh"><h2>Characters</h2><span class="sub">${snap.profileStatus && snap.profileStatus.state === 'ok' ? 'From your public profile and the game log' : 'Every character that levelled up or died since league start'}</span></div>
           ${chars.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Character</th><th>Class</th><th>League</th><th class="r">Level</th><th>Campaign</th><th>Last active</th></tr></thead><tbody>
             ${chars.map(([n, c]) => `<tr class="${ch && ch.name === n ? 'cur' : ''}"><td style="font-weight:600">${E.esc(n)}</td><td>${E.esc(c.cls || '–')}</td><td>${E.esc(c.league || '–')}</td><td class="r">${c.level || '–'}</td>
@@ -46,7 +62,6 @@
           ${E.note('Campaign shows <b style="color:var(--tx)">Unknown</b> for characters Exilogue never saw level through the acts. Entering a map marks it Done, since maps only open after Kitava.')}`
           : '<div class="empty"><b>Nobody yet</b><span>Characters appear after a level-up or death, or from your public profile (Settings › League).</span></div>'}
         </section>
-        ${pathRow('Game', 'poeExe', cfg.paths.poeExe, snap.paths.poeExe, 'Point this at PathOfExile.exe (or PathOfExile_x64.exe) in your install folder.')}
       </div>`;
     },
   };
@@ -92,15 +107,22 @@
       if (!snap.paths.clientTxt || !st) return head + `<div class="cols">${noLogBox('track maps')}</div>`;
       loadMaps(st, ui);
       const s = st.session, t = st.totals;
-      const sessionOnly = ui.mapScope === 'session';
-      const chips = [
-        [sessionOnly ? (s ? s.mapsDone : 0) : t.mapsDone, sessionOnly ? 'maps this session' : 'maps this league'],
-        [E.fmt(sessionOnly ? (s && s.mapsDone ? s.mapMs / s.mapsDone : null) : st.avgMapMs), 'avg map'],
-        [E.fmt(sessionOnly ? (s ? s.mapMs : 0) : t.mapMs, { hours: true }), 'in maps'],
+      const sessionOnly = (ui.mapScope || 'session') === 'session' && s && !s.ended;
+      const chips = (sessionOnly ? [
+        [E.hm(s.elapsedMs), 'played'],
+        [s.mapsDone, 'maps'],
+        [s.mapsDone ? (s.mapsDone / (s.elapsedMs / 3600e3)).toFixed(1) : '–', 'maps / hour played'],
+        [E.fmt(s.mapsDone ? s.mapMs / s.mapsDone : null), 'avg map'],
+        [s.deaths, 'deaths'],
+        [snap.divRate && snap.divRate.perHour != null ? snap.divRate.perHour.toFixed(2) : '–', 'div / hour'],
+      ] : [
+        [t.mapsDone, 'maps'],
+        [E.fmt(t.mapMs, { hours: true }), 'in maps'],
+        [E.fmt(st.avgMapMs), 'avg map'],
+        [st.avgMapMsRecent != null ? E.fmt(st.avgMapMsRecent) : '–', 'avg last 20'],
         [st.highestTier ? 'T' + st.highestTier : '–', 'highest tier'],
-        [sessionOnly ? (s ? s.deaths : 0) : t.deaths, 'deaths'],
-        [sessionOnly ? (st.avgMapMsRecent != null ? E.fmt(st.avgMapMsRecent) : '–') : (s ? s.mapsDone : 0), sessionOnly ? 'avg last 20' : 'maps this session'],
-      ].map(([b, l]) => `<div class="chip"><b>${b}</b><span>${l}</span></div>`).join('');
+        [t.deaths, 'deaths'],
+      ]).map(([b, l]) => `<div class="chip"><b>${b}</b><span>${l}</span></div>`).join('');
       let list = ui.allMaps || [];
       if (sessionOnly && s) list = list.filter(m => m.start >= s.start);
       const tf = TIER_FILTERS.find(f => f[0] === (ui.mapTier || 'all')) || TIER_FILTERS[0];
@@ -127,13 +149,25 @@
       const empty = !ui.allMaps ? '<div class="empty"><b>Loading maps…</b></div>'
         : !t.mapsDone ? '<div class="empty"><b>No maps yet</b><span>Maps start after the campaign.</span></div>'
           : '<div class="empty"><b>No maps match</b><span>Try another name or tier.</span></div>';
-      return head + `<div class="chips six" style="margin-bottom:16px">${chips}</div>
+      // Two small charts. allMaps is newest first.
+      const scoped = (ui.allMaps || []).filter(m => !sessionOnly || m.start >= s.start);
+      const all = scoped.slice(0, 40).reverse();
+      const mxT = Math.max(1, ...all.map(m => m.activeMs || 0)), avgT = (sessionOnly ? (s.mapsDone ? s.mapMs / s.mapsDone : 0) : st.avgMapMs) || 0;
+      const trend = all.length ? `<section class="box"><div class="bh"><h2>Map times</h2><span class="sub">last ${all.length} maps, newest right · line = your average</span></div>
+        <div class="mp-trend" role="img" aria-label="Map times of the last ${all.length} maps; your average is ${E.fmt(avgT)}">${all.map(m => `<i class="${m.deaths ? 'd' : ''}" style="height:${Math.round(100 * (m.activeMs || 0) / mxT)}%" title="${E.esc((m.zone || '').replace(/ Map$/, ''))} T${m.tier || '?'} · ${E.fmt(m.activeMs)}${m.deaths ? ' · ' + m.deaths + ' death(s)' : ''}"></i>`).join('')}<span class="avgline" style="bottom:${Math.min(100, Math.round(100 * avgT / mxT))}%"></span></div>
+        <div class="sub" style="margin-top:6px">Red: you died in that map. Hover a bar for the map.</div></section>` : '';
+      const tierCount = {}; scoped.forEach(m => { const k = m.tier || 0; tierCount[k] = (tierCount[k] || 0) + 1; });
+      const tiersList = Object.keys(tierCount).map(Number).filter(Boolean).sort((a, b) => a - b), mxC = Math.max(1, ...Object.values(tierCount));
+      const spread = tiersList.length ? `<section class="box"><div class="bh"><h2>Maps per tier</h2><span class="sub">${sessionOnly ? 'this session' : 'this league'}</span></div>
+        <div class="tierbars" role="img" aria-label="${tiersList.map(k => 'tier ' + k + ': ' + tierCount[k]).join(', ')}">${tiersList.map(k => `<div><span class="lbl">T${k}</span><span class="mp-tb"><i style="width:${Math.round(100 * tierCount[k] / mxC)}%"></i></span><b>${tierCount[k]}</b></div>`).join('')}</div></section>` : '';
+      const scope = `<div class="row between" style="margin-bottom:10px"><div class="scope" role="group" aria-label="Show numbers for">${[['session', 'This session'], ['league', 'This league']].map(([k, l]) => `<button data-mscope="${k}" aria-pressed="${(sessionOnly ? 'session' : 'league') === k}" ${k === 'session' && !(s && !s.ended) ? 'disabled title="No session running"' : ''}>${l}</button>`).join('')}</div>${s && !s.ended ? `<span class="sub">session started ${E.clock(s.start || Date.now() - s.elapsedMs)}</span>` : ''}</div>`;
+      return head + scope + `<div class="chips six" style="margin-bottom:16px">${chips}</div>
+        <div class="cols2" style="margin-bottom:16px">${trend}${spread}</div>
         <section class="box">
           <div class="row" style="gap:10px;flex-wrap:wrap">
             <input class="input" style="max-width:280px" type="search" placeholder="Search map…" aria-label="Search map" data-msearch value="${E.esc(ui.mapQ || '')}">
             <div class="row" style="gap:6px">${tiers}</div><span class="grow"></span>
             <span class="sub">Grouped per map and tier · ${groups.length} row${groups.length === 1 ? '' : 's'}</span>
-            <select class="select" style="width:auto" data-mscope aria-label="Which maps"><option value="league" ${sessionOnly ? '' : 'selected'}>This league</option><option value="session" ${sessionOnly ? 'selected' : ''}>This session</option></select>
           </div>
           ${rows ? `<div class="tblwrap"><table class="tbl mapstat"><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table></div>
             <div class="sub">Click a column to sort · click a map for its runs.</div>` : empty}
@@ -142,7 +176,7 @@
     mount(el) {
       const ui = EX.ui;
       el.addEventListener('input', e => { if ('msearch' in e.target.dataset) { ui.mapQ = e.target.value; EX.rerender(); } });
-      el.addEventListener('change', e => { if ('mscope' in e.target.dataset) { ui.mapScope = e.target.value; EX.rerender(); } });
+      el.addEventListener('click', e => { const b = e.target.closest('button[data-mscope]'); if (b) { ui.mapScope = b.dataset.mscope; EX.rerender(); } });
       el.addEventListener('click', e => {
         const s = e.target.closest('[data-msort]');
         if (s) {
@@ -171,26 +205,33 @@
       const last = completed >= 1 && ref && r.splits[completed] != null && ref.splits[completed] != null ? r.splits[completed] - ref.splits[completed] : null;
       const d = run ? last : total;
       const actbar = Array.from({ length: 10 }, (_, i) => i + 1).map(a => `<span class="${a <= completed ? 'd' : run && a === run.maxAct ? 'c' : ''}">${a}</span>`).join('');
+      const hasRef = !!ref; // the tracker never returns the run itself as its reference
+      const maxDf = Math.max(60e3, ...Array.from({ length: 10 }, (_, i) => hasRef && r.splits[i + 1] != null && ref.splits[i + 1] != null ? Math.abs(r.splits[i + 1] - ref.splits[i + 1]) : 0));
+      const projected = run && hasRef && last != null && ref.splits[10] != null ? ref.splits[10] + last : null;
       const splitRows = Array.from({ length: 10 }, (_, i) => i + 1).map(a => {
-        const mine = r.splits[a], theirs = ref && ref.splits[a], cur = run && a === run.maxAct;
+        const mine = r.splits[a], theirs = hasRef ? ref.splits[a] : null, cur = run && a === run.maxAct;
         const df = mine != null && theirs != null ? mine - theirs : null;
+        const bar = df == null ? '' : `<span class="dfbar"><i class="${df <= 0 ? 'ok' : 'bad'}" style="${df <= 0 ? 'right:50%' : 'left:50%'};width:${Math.round(50 * Math.abs(df) / maxDf)}%"></i></span>`;
         return `<tr class="${cur ? 'cur' : ''}"><td style="font-weight:600">Act ${a}${cur ? ' <span class="dim" style="font-weight:400">· now</span>' : ''}</td>
           <td class="r">${mine != null ? E.fmt(mine, { hours: true }) : cur ? E.fmt(run.activeMs, { hours: true }) : '–'}</td>
-          <td class="r dim">${theirs != null ? E.fmt(theirs, { hours: true }) : '–'}</td>
-          <td class="r ${E.diffCls(df)}" style="font-weight:600">${E.diff(df)}</td></tr>`;
+          <td class="r dim">${mine != null && (a === 1 || r.splits[a - 1] != null) ? E.fmt(mine - (a > 1 ? r.splits[a - 1] : 0)) : cur && (a === 1 || r.splits[a - 1] != null) ? E.fmt(run.activeMs - (a > 1 ? r.splits[a - 1] : 0)) : '–'}</td>
+          ${hasRef ? `<td class="r dim">${theirs != null ? E.fmt(theirs, { hours: true }) : '–'}</td>
+          <td class="r ${E.diffCls(df)}" style="font-weight:600">${E.diff(df)}</td><td style="width:34%">${bar}</td>` : ''}</tr>`;
       }).join('');
       const runs = [...st.runs].reverse();
-      return head + `<div class="cols">
+      return head + `<div class="charrow">
         <section class="box"><div class="bh"><h2>${run ? 'Current run' : 'Latest run'}</h2>${run ? '<span class="pill ok"><span class="d" aria-hidden="true"></span>Running</span>' : '<span class="pill acc">Done</span>'}</div>
           <div class="row between" style="align-items:flex-end"><div style="min-width:0"><div style="font-size:20px;font-weight:600" class="ell">${E.esc(r.char || 'New character')}</div><div class="sub">${E.esc(r.cls || '')}${r.level ? ' · level ' + r.level : ''}</div></div>
             <div style="text-align:right"><div style="font-size:40px;font-weight:600;line-height:1">${E.fmt(r.activeMs, { hours: true })}</div>
               ${d != null ? `<div class="${E.diffCls(d)}" style="font-size:14px;font-weight:600;margin-top:4px">${E.diff(d)} vs previous run${run ? ' after Act ' + completed : ''}</div>` : `<div class="sub" style="margin-top:4px">${ref ? 'No split yet' : 'First run: becomes the reference'}</div>`}</div></div>
           <div class="actbar" role="img" aria-label="${run ? 'Act ' + run.maxAct + ' of 10' : 'Acts completed: 10 of 10'}">${actbar}</div>
+          ${projected != null ? `<div class="cp-proj"><span class="lbl">On pace for</span><b>${E.fmt(projected, { hours: true })}</b><span class="sub">if you keep the gap you have now</span></div>` : ''}
           <dl class="kv"><dt>Deaths this run</dt><dd>${r.deaths}</dd><dt>Started</dt><dd>${E.date(r.startedAt)}</dd>${run ? '' : `<dt>Finished</dt><dd>${E.date(r.finishedAt)}</dd>`}</dl>
         </section>
-        <section class="box"><div class="bh"><h2>Splits</h2><span class="sub">${ref ? 'vs ' + E.esc(ref.char || 'previous run') : 'Time at the end of each act'}</span></div>
-          <div class="tblwrap"><table class="tbl"><thead><tr><th>Act</th><th class="r">Your time</th><th class="r">Previous run</th><th class="r">Difference</th></tr></thead><tbody>${splitRows}</tbody></table></div></section>
-        <section class="box span2"><div class="bh"><h2>All runs</h2><span class="sub">The previous run is the last one with status Done</span></div>
+        <section class="box"><div class="bh"><h2>Splits</h2><span class="sub">${hasRef ? 'vs ' + E.esc(ref.char || 'previous run') : 'Time at the end of each act'}</span></div>
+          <div class="tblwrap"><table class="tbl"><thead><tr><th>Act</th><th class="r">Your time</th><th class="r">This act</th>${hasRef ? '<th class="r">Previous run</th><th class="r">Difference</th><th><span class="sub" style="text-transform:none;letter-spacing:0">← faster · slower →</span></th>' : ''}</tr></thead><tbody>${splitRows}</tbody></table></div>
+          ${hasRef ? '' : E.note('Your next character races this run: its splits show up here side by side.')}</section></div>
+        <div class="cols" style="margin-top:16px"><section class="box span2"><div class="bh"><h2>All runs</h2><span class="sub">The previous run is the last one with status Done</span></div>
           <div class="tblwrap"><table class="tbl"><thead><tr><th>Character</th><th>Class</th><th>Status</th><th class="r">Time</th><th class="r">Deaths</th><th>Started</th></tr></thead><tbody>
           ${runs.map(x => `<tr class="${run && x.id === run.id ? 'cur' : ''}"><td style="font-weight:600">${E.esc(x.char || 'New character')}</td><td>${E.esc(x.cls || '–')}</td>
             <td>${x.finished ? '<span class="pill acc">Done</span>' : x.abandoned ? `<span class="pill" style="color:var(--tx3)">Abandoned · Act ${x.maxAct}</span>` : '<span class="pill ok"><span class="d" aria-hidden="true"></span>Running</span>'}</td>
@@ -202,36 +243,40 @@
   };
 
   // ---------- Overlay ----------
+  // One hotkey control everywhere: the keys when set, otherwise a "Set hotkey" chip in the same place.
+  const hk = (cfg, key, label) => cfg.hotkeys[key] ? `<button class="hkchip" data-nav="settings:hotkeys" title="Change in Settings › Hotkeys">${E.kbd(cfg.hotkeys[key])}</button>` : `<button class="hkchip hkchip-none" data-nav="settings:hotkeys" aria-label="Set a hotkey for ${label}">+ Set hotkey</button>`;
   EX.overlayControls = (cfg, snap) => {
     const o = cfg.overlay;
     const b = cfg.breaks || { enabled: true, campaign: true, everyMin: 60 };
     const snd = b.sound || { on: false, volume: 50 };
     const fonts = [['app', 'Same as app'], ['source', 'Source Sans 3'], ['bahnschrift', 'Bahnschrift'], ['inter', 'Inter'], ['segoe', 'Segoe UI']];
     return `<section class="box"><div class="bh"><h2>Overlay</h2>${E.sw(o.enabled, 'Show overlay', 'ov-toggle')}</div>
-        <div class="row between"><span class="muted">Show / hide overlay</span>${E.kbd(cfg.hotkeys.toggleOverlay)}</div>
-        <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" data-act="ov-unlock">${snap.overlayUnlocked ? ic.lock() + ' Lock' : ic.unlock() + ' Unlock to move'}</button>${E.kbd(cfg.hotkeys.unlockOverlay)}
-          <button class="btn q" data-act="ov-reset">${ic.refresh()} Reset position</button></div>
-        ${E.note('Unlocked, you can drag the overlay and pull its corners to change the width. Lock it again to click through it. Needs windowed fullscreen.')}</section>
+        <div class="row between"><span class="muted">Show / hide</span>${hk(cfg, 'toggleOverlay', 'show / hide')}</div>
+        <div class="row between"><span class="muted">Unlock to move</span>${hk(cfg, 'unlockOverlay', 'unlock')}</div>
+        ${E.note('Unlocked, you can drag the overlay and pull its corners to change the width. Lock it again to click through it. Needs windowed fullscreen.')}
+        <div class="row" style="gap:8px"><button class="btn sm" data-act="ov-unlock">${snap.overlayUnlocked ? ic.lock() + ' Lock' : ic.unlock() + ' Unlock to move'}</button><button class="btn q sm" data-act="ov-reset">${ic.refresh()} Reset position</button></div></section>
       <section class="box"><div class="bh"><h2>Take a break?</h2>${E.sw(b.enabled, 'Ask me to take a break', 'brk-toggle')}</div>
         <div class="row between"><span class="muted">Ask after</span><select class="select" style="width:auto" data-brkevery>${[30, 45, 60, 90, 120].map(m => `<option value="${m}" ${b.everyMin === m ? 'selected' : ''}>${m} min of play</option>`).join('')}</select></div>
         <div class="row between"><span class="muted">Also during the campaign</span>${E.sw(b.campaign, 'Also during the campaign', 'brk-campaign')}</div>
-        <div class="row between"><button class="btn sm" data-act="brk-taken">I took a break</button>${cfg.hotkeys.breakTaken ? E.kbd(cfg.hotkeys.breakTaken) : '<button class="btn q sm" data-nav="settings:hotkeys">Set a hotkey</button>'}</div>
+        <div class="row between"><span class="muted">"I took a break" key</span>${hk(cfg, 'breakTaken', 'I took a break')}</div>
         <div class="row between"><span class="muted">Play a sound</span>${E.sw(snd.on, 'Play a sound when it asks', 'brk-sound')}</div>
         <div class="row between"><label class="muted" for="brksnd">Sound</label><select id="brksnd" class="select" style="width:auto" data-brksnd ${snd.on ? '' : 'disabled'}>${[['chime', 'Chime'], ['shrine', 'Shrine (in-game)']].map(([v, l]) => `<option value="${v}" ${snd.file === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         <div class="row" style="gap:10px;align-items:center"><label class="muted" for="brkvol" style="white-space:nowrap">Volume</label>
           <input id="brkvol" type="range" min="0" max="100" step="5" value="${snd.volume}" data-brkvol class="grow" ${snd.on ? '' : 'disabled'} aria-valuetext="${snd.volume}%">
           <span class="sub" style="flex:none;min-width:4.5ch;overflow:visible;text-align:right;font-variant-numeric:tabular-nums">${snd.volume}%</span>
           <button class="btn q sm" data-act="brk-sound-test" ${snd.on ? '' : 'disabled'}>Test</button></div>
-        ${E.note('Never in a map: it asks about 3 seconds after you reach your hideout or a town, and stays until you enter the next zone. A minute without mouse or keyboard counts as a break by itself.')}</section>
+        ${E.note('Never in a map: it asks in your hideout or a town. A minute away from the keyboard counts as a break by itself.')}
+        <div><button class="btn sm" data-act="brk-taken">I took a break</button></div></section>
       <section class="box"><div class="bh"><h2>Essence upgrades</h2>${E.sw(cfg.essences.enabled, 'Essence upgrade overlay', 'ess-toggle')}</div>
-        <div class="row between"><label class="muted" for="essdisp">Screen with the game</label><select id="essdisp" class="select" style="width:auto" data-essdisp>${(() => {
+        <div class="field"><label class="lbl" for="essdisp">Which screen is the game on?</label><select id="essdisp" class="select" data-essdisp>${(() => {
           const ds = snap.displays || [], name = d => `Screen ${d.n} · ${d.w}×${d.h}${d.label ? ' · ' + E.esc(d.label) : ''}${d.primary ? ' (main)' : ''}`;
           const auto = ds.find(d => d.id === snap.gameDisplayId);
           return `<option value="auto" ${cfg.essences.display == null ? 'selected' : ''}>Automatic${auto ? ' · ' + name(auto) : ' · not found, main screen'}</option>`
             + ds.map(d => `<option value="${d.id}" ${cfg.essences.display === d.id ? 'selected' : ''}>${name(d)}</option>`).join('');
         })()}</select></div>
-        <div class="row between"><span class="muted">Show / hide</span>${cfg.hotkeys.essenceOverlay ? E.kbd(cfg.hotkeys.essenceOverlay) : '<button class="btn q sm" data-nav="settings:hotkeys">Set a hotkey</button>'}</div>
-        ${E.note('Open your essence stash tab and press the hotkey. Green: worth upgrading (3 → 1 of the next tier is worth at least 3×, chains included). Red: not worth it. With the profit per row and in total. Only while the game runs. Automatic finds the screen the game is on from its own settings file. Counts come from your newest Wealthy Exile export (older than 15 minutes: a new one first, through an open Wealthy Exile tab), prices from poe.ninja.')}</section>
+        <div class="row between"><span class="muted">Show / hide</span>${hk(cfg, 'essenceOverlay', 'essence upgrades')}</div>
+        ${E.note('Open your essence stash tab and press the hotkey: green is worth upgrading, red is not.')}
+        <details class="howto"><summary>How it decides</summary><p class="sub" style="white-space:normal;margin:6px 0 0">Green when 3 essences are worth less than 1 of the next tier, chains included, with the profit per row and in total. Counts come from your newest Wealthy Exile export (a fresh one first when it is older than 15 minutes), prices from poe.ninja. Only while the game runs.</p></details></section>
       <section class="box"><h2>Overlay text</h2>
         <div class="field"><label class="lbl" for="ovf">Font</label><select id="ovf" class="select" data-ovfont>${fonts.map(([v, l]) => `<option value="${v}" ${o.font === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         <div class="field"><span class="lbl" id="ovs-l">Size</span><div role="radiogroup" aria-labelledby="ovs-l" class="seg" style="align-self:flex-start">
@@ -278,7 +323,7 @@
   EX.breakPrompt = (cfg, bp) => {
     if (!bp) return '';
     const key = cfg.hotkeys && cfg.hotkeys.breakTaken;
-    return `<div class="r"><div class="k" style="color:var(--live)">Take a break?<b>${key ? E.esc(key) + ' = yes' : 'Set a hotkey in Settings'}</b></div><div class="v">${E.hm(bp.sinceMs)}<small>since last</small></div></div>`;
+    return `<div class="r"><div class="k" style="color:var(--live)">Take a break?<b>${key ? E.esc(key) + ' = yes' : 'no hotkey set'}</b></div><div class="v">${E.hm(bp.sinceMs)}<small>since last</small></div></div>`;
   };
 
   EX.pages.overlay = {
@@ -287,7 +332,8 @@
       const o = cfg.overlay, paused = !snap.gameRunning;
       const font = o.font === 'app' ? '' : ` f-${o.font}`;
       const pal = EX.state.darkPalette;
-      return ph('OV', 'Overlay', 'Floats over the game. Click-through while locked.', o.enabled ? '<span class="pill ok"><span class="d" aria-hidden="true"></span>Showing in game</span>' : '<span class="pill">Hidden</span>') + `
+      const fsWarn = snap.exclusiveFullscreen ? `<div class="banner warn" role="alert" style="margin-bottom:16px"><span class="bi">${ic.warn()}</span><div class="grow"><div class="bt">The game runs in exclusive fullscreen</div><div class="sub">Nothing can be drawn over it then. In game: Options › Graphics › Mode: Windowed fullscreen.</div></div></div>` : '';
+      return fsWarn + ph('OV', 'Overlay', 'Floats over the game. Click-through while locked.', o.enabled ? '<span class="pill ok"><span class="d" aria-hidden="true"></span>Showing in game</span>' : '<span class="pill">Hidden</span>') + `
         <div style="display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:16px;align-items:start;max-width:1100px">
           <section class="box"><div class="bh"><h2>Preview</h2><span class="sub">${paused ? 'Game closed' : 'Live'}</span></div>
             <div class="ov ovmini ovt-${pal} sz-${o.size}${paused ? ' paused' : ''}${font}" style="--ovf:var(--ui)">${EX.overlayRows(cfg, st, paused, { divRate: snap.divRate })}</div>
@@ -306,7 +352,7 @@
       const w = snap.wealth || {}, ui = EX.ui, ws = EX.weSetup;
       const n = (v, d = 1) => v == null || !Number.isFinite(v) ? '–' : Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('en-US') : v.toFixed(Math.abs(v) >= 100 ? 0 : d);
       const live = w.scriptSeenAt && Date.now() - w.scriptSeenAt < 3 * 60e3;
-      const hk = (key, label) => cfg.hotkeys[key] ? `<button class="hkchip" data-nav="settings:hotkeys" title="Change in Settings › Hotkeys">${E.kbd(cfg.hotkeys[key])}</button>` : `<button class="btn q sm" data-nav="settings:hotkeys" aria-label="Set a hotkey for ${label}">Set a hotkey</button>`;
+      const hk = (key, label) => cfg.hotkeys[key] ? `<button class="hkchip" data-nav="settings:hotkeys" title="Change in Settings › Hotkeys">${E.kbd(cfg.hotkeys[key])}</button>` : `<button class="hkchip hkchip-none" data-nav="settings:hotkeys" aria-label="Set a hotkey for ${label}">+ Set hotkey</button>`;
       const ever = w.scriptEverAt || w.scriptSeenAt; // kept across restarts
       const connected = !!(ever || w.scriptVersion);
       const silent = connected && !live && ever && Date.now() - ever > 3 * 86400e3;
@@ -347,12 +393,33 @@ ${connected ? `          <section class="box"><div class="bh"><h2>Connection</h2
   };
 
 
+  // ---------- Help ----------
+  EX.pages.help = {
+    live: false,
+    render({ snap }) {
+      const q = (t, a) => `<details class="help-q"><summary>${t}</summary><p>${a}</p></details>`;
+      return ph('?', 'Help', 'Common questions. Each answer says where to fix it.') + `<div class="cols">
+        <section class="box span2">
+          ${q('The overlay doesn\'t show in game', 'Set the game to <b>Windowed fullscreen</b> (Options › Graphics). Check that the overlay is switched on (Overlay page) and that the game runs. Its hotkey shows or hides it.')}
+          ${q('Exilogue doesn\'t see my zones or maps', 'It reads the game\'s log, Client.txt. Check Settings › Paths (the dot must be green) and the league start in Settings › League: anything before the start is ignored.')}
+          ${q('Wealthy Exile doesn\'t sync', 'Keep a Wealthy Exile tab open in your browser. The Wealthy Exile page shows whether the script is connected; if not, follow its steps again. In Chrome and Edge, “Allow User Scripts” must stay on.')}
+          ${q('Prices or the goal are missing', 'Prices come from poe.ninja. If it is down or your league name differs from poe.ninja\'s, prices stay empty. Check the league name in Settings › League.')}
+          ${q('A hotkey doesn\'t work', 'Another program may use the same keys: Settings › Hotkeys shows it in red. Numpad keys need Num Lock on.')}
+          ${q('Where are my files and backups?', 'Settings › Storage &amp; backups, with Open folder. A backup is made before every rebuild or path change.')}
+        </section>
+        <section class="box"><h2>Still stuck?</h2><p class="sub" style="white-space:normal;margin:0">Copy the diagnostics and send them to whoever helps you (or paste them in a GitHub issue). They hold versions, which paths were found and the last errors; no account details.</p>
+          <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn p" data-act="diag-copy">Copy diagnostics</button><button class="btn" data-act="logs-open">${ic.folder()} Open Exilogue's folder</button></div>
+          <div><button class="btn q sm" data-url="https://github.com/OriginDutch/PoE_Exilogue/issues">Report on GitHub ${ic.ext()}</button></div>
+          <div class="sub">Exilogue ${E.esc((snap.update && snap.update.version) || '')}</div></section>
+      </div>`;
+    },
+  };
   // ---------- Loot filter ----------
   EX.pages.filter = {
     live: false, // no timers on this page
     render({ snap }) {
-      const ns = snap.neversink || {}, latest = ns.latest, outdated = latest && latest.tag !== ns.lastSyncedTag;
-      return ph('LF', 'Loot filter', 'NeverSink · FilterBlade', latest ? (outdated ? '<span class="pill acc"><span class="d" aria-hidden="true"></span>Update available</span>' : '<span class="pill">Up to date</span>') : '') + `<div class="cols">
+      const ns = snap.neversink || {}, latest = ns.latest, off = ns.remind === false, outdated = latest && !off && latest.tag !== ns.lastSyncedTag;
+      return ph('LF', 'Loot filter', 'NeverSink · FilterBlade', off ? '<span class="pill">Reminders off</span>' : latest ? (outdated ? '<span class="pill acc"><span class="d" aria-hidden="true"></span>Update available</span>' : '<span class="pill">Up to date</span>') : '') + `<div class="cols">
         <section class="box"><div class="bh"><h2>Latest NeverSink</h2><button class="btn q" data-url="${latest ? E.esc(latest.url) : 'https://github.com/NeverSinkDev/NeverSink-Filter/releases'}">Release notes ${ic.ext()}</button></div>
           ${latest ? `<div><div style="font-size:40px;font-weight:600;line-height:1">${E.esc(latest.tag)}</div><div class="sub" style="margin-top:6px">Released ${E.date(new Date(latest.publishedAt).getTime())} · ${E.ago(new Date(latest.publishedAt).getTime())}</div></div>`
             : '<div class="empty"><b>Not checked yet</b><span>Exilogue asks GitHub for the latest release when you are online.</span></div>'}</section>
@@ -362,25 +429,37 @@ ${connected ? `          <section class="box"><div class="bh"><h2>Connection</h2
         ${latest && latest.notes && latest.notes.length ? `<section class="box span2"><div class="bh"><h2>What's new in ${E.esc(latest.tag)}</h2><span class="sub">${latest.notes.length} change${latest.notes.length === 1 ? '' : 's'} · from GitHub</span></div>
           <ul class="notes">${latest.notes.map(n => `<li>${E.esc(n)}</li>`).join('')}</ul></section>` : ''}
         <section class="box span2"><h2>Update your filter</h2>
-          <ol class="steps"><li>Open FilterBlade. It loads the latest NeverSink.</li><li>Sync it to your account in FilterBlade.</li><li>Come back and press I've synced.</li></ol>
+          <ol class="steps"><li>Open FilterBlade. It loads the latest NeverSink.</li><li>Sync it to your account in FilterBlade.</li><li>In game: Options › Game › Item filter, pick it again (or reload it).</li><li>Come back and press I've synced.</li></ol>
           <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn p lg" data-url="https://www.filterblade.xyz">Open FilterBlade ${ic.ext()}</button>
-            ${latest ? `<button class="btn lg" data-act="ns-synced" ${outdated ? '' : 'disabled'}>I've synced ${E.esc(latest.tag)}</button>` : ''}</div>
-          ${E.note('FilterBlade keeps your own tweaks when you re-sync, so updating does not reset your changes.')}</section></div>`;
+            ${latest ? `<button class="btn lg" data-act="ns-synced" ${latest.tag !== ns.lastSyncedTag ? '' : 'disabled'}>I've synced ${E.esc(latest.tag)}</button>` : ''}</div>
+          ${E.note('FilterBlade keeps your own tweaks when you re-sync, so updating does not reset your changes.')}
+          <div>${off ? '<span class="sub">Reminders are off. </span><button class="btn q sm" data-act="ns-on">Remind me again</button>' : '<button class="btn q sm" data-act="ns-off">I don\'t use NeverSink: stop reminding me</button>'}</div></section></div>`;
     },
   };
 
   // ---------- Path of Building ----------
   EX.pages.pob = {
-    live: false, // no timers on this page (the build updates with the snapshot)
-    render({ snap, cfg }) {
-      const b = snap.pobBuild;
-      const build = b ? `<section class="box"><div class="bh"><h2>Last build</h2><span class="sub">edited ${E.ago(b.mtime)}</span></div>
-          <div><div style="font-size:28px;font-weight:600;line-height:1.15">${E.esc(b.skill ? b.skill + (b.asc || b.cls ? ' ' + (b.asc || b.cls) : '') : b.name)}</div>
-          <div class="sub" style="margin-top:4px">${E.esc(b.name)}${b.level ? ' · level ' + b.level : ''}${b.cls ? ' · ' + E.esc(b.cls) : ''}</div></div>
-          <div class="path">${E.esc(b.file)}</div></section>`
-        : `<section class="box"><h2>Last build</h2><div class="empty"><b>No builds found</b><span>Looks in Documents\\Path of Building\\Builds. Save a build in Path of Building and it shows up here.</span></div></section>`;
-      return ph('PB', 'Path of Building', 'Build planner', `<button class="btn p lg" data-act="pob" ${snap.paths.pobExe ? '' : 'disabled'}>${ic.play()} Launch</button>`) +
-        `<div class="cols" style="max-width:900px">${build}${pathRow('Executable', 'pobExe', cfg.paths.pobExe || '', snap.paths.pobExe, 'Exilogue only starts Path of Building. Builds and updates stay inside Path of Building itself.')}</div>`;
+    live: false,
+    render({ snap }) {
+      const b = snap.pobBuild, st = (b && b.stats) || {};
+      const big = v => v == null ? '–' : v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : v >= 1e4 ? Math.round(v / 1e3) + 'k' : Math.round(v).toLocaleString('en-US');
+      const head = ph('PB', 'Path of Building', b ? 'Your most recently saved build' : 'Build planner', snap.paths.pobExe ? `<button class="btn p lg" data-act="pob">${ic.play()} Launch</button>` : `<span class="sub">Path not set</span><button class="btn lg" data-nav="settings:paths">Set path</button>`);
+      if (!b) return head + `<div class="cols"><section class="box span2"><div class="empty"><b>No builds found</b><span>Looks in Documents\\Path of Building\\Builds. Save a build in Path of Building and it shows up here.</span></div></section></div>`;
+      const res = [['Fire', 'FireResist', '#ec7f6e'], ['Cold', 'ColdResist', '#8fb4f0'], ['Lightning', 'LightningResist', '#e2c56f'], ['Chaos', 'ChaosResist', '#c3a5f0']];
+      const supp = st.EffectiveSpellSuppressionChance ?? st.SpellSuppressionChance;
+      const stat = (k, v, cls = '') => `<div class="pbs"><span class="lbl">${k}</span><b class="${cls}">${v}</b></div>`;
+      return head + `<div class="charrow">
+        <section class="box"><div class="bh"><h2>Build</h2><span class="sub">saved ${E.ago(b.mtime)}</span></div>
+          <div><div style="font-size:26px;font-weight:600;line-height:1.15">${E.esc(b.skill || b.name)}</div>
+          <div class="sub" style="margin-top:4px">${E.esc([b.asc || b.cls, b.level ? 'level ' + b.level : ''].filter(Boolean).join(' · '))}</div></div>
+          <div class="sub ell" title="${E.esc(b.file)}">${E.esc(b.name)}.xml</div>
+          <div class="row" style="gap:8px"><button class="btn sm" data-act="pob-folder">${ic.folder()} Open builds folder</button></div></section>
+        <section class="box"><div class="bh"><h2>Numbers</h2><span class="sub">as Path of Building calculated them when you saved</span></div>
+          <div class="pbgrid">${stat('DPS', big(st.CombinedDPS || st.FullDPS || st.TotalDPS))}${stat('Life', big(st.Life))}${stat('Energy shield', big(st.EnergyShield))}${stat('Evasion', big(st.Evasion))}${stat('Spell suppression', supp != null ? Math.round(supp) + '%' : '–', supp >= 100 ? 'ok' : '')}</div>
+          <div class="lbl" style="margin-top:6px">Resistances</div>
+          <div class="res big">${res.filter(([, k]) => st[k] != null).map(([l, k, c]) => `<span style="--c:${c}"><small>${l}</small>${Math.round(st[k])}%</span>`).join('')}</div>
+          ${st.ChaosResist < 0 ? `<div class="sub">${ic.warn()} Chaos resistance is negative.</div>` : ''}</section>
+      </div>`;
     },
   };
 })();

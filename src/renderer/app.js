@@ -60,6 +60,7 @@
       <div class="sec">Links</div>
       ${LINKS.map(([id, m, l, u]) => item('link:' + id, mini(id, m), l + ` <span class="ext-mark" aria-label="(opens in your browser)">${ic.ext()}</span>`, `data-url="${u}"`)).join('')}
       <div class="spacer"></div>
+      ${item('page:help', '<span class="ic" style="font-weight:700">?</span>', 'Help', 'data-nav="page:help"')}
       ${item('settings', `<span class="ic">${ic.settings()}</span>`, 'Settings', 'data-nav="settings"')}
       <button class="nav" data-act="collapse" aria-expanded="${!col}" aria-label="${col ? 'Expand sidebar' : 'Collapse sidebar'}" style="color:var(--tx3)"><span class="ic">${col ? ic.expand() : ic.collapse()}</span><span class="lb">Collapse</span></button>`;
   }
@@ -238,6 +239,11 @@
       state.snap = await ej.snapshot(); render(true);
     },
     'storage-refresh': () => refreshTab(),
+    'pob-folder': async () => { const r = await ej.openPobFolder(); if (r && r.ok === false) E.toastError(`Could not open the folder: ${r.error}`); },
+    'diag-copy': async () => { await ej.copyDiagnostics(); E.toast('Diagnostics copied. Paste them to whoever helps you.'); },
+    'logs-open': async () => { const r = await ej.openDataFolder(); if (r && r.ok === false) E.toastError(`Could not open the folder: ${r.error}`); },
+    'ns-off': () => save({ neversink: { remind: false } }),
+    'ns-on': () => save({ neversink: { remind: true } }),
     'storage-open': async () => { const r = await ej.openDataFolder(); if (r && r.ok === false) E.toastError(`Could not open the folder: ${r.error}`); },
     'events-more': async () => { await loadEvents('more'); render(true); },
     rebuild: async () => {
@@ -383,7 +389,7 @@
       if (full && state.snap.stats && state.snap.stats.eventSeq !== ui.eventSeq) loadEvents('new').then(() => render(true));
       return;
     }
-    if (ui.view === 'settings') { if (full) render(JSON.stringify([state.snap.hotkeys, state.snap.profileStatus]) !== prevHk); return; }
+    if (ui.view === 'settings') { if (full) render(JSON.stringify([state.snap.hotkeys, state.snap.profileStatus, state.snap.update]) !== prevHk); return; }
     if (full) render(page.data !== false); else if (page.live) render();
   }
   // Tool icons come separately (data: URLs, only when they change), not with every snapshot.
@@ -394,7 +400,7 @@
     ej.icons().then(map => { state.icons = map || {}; renderSide(); if (!ui.editing && !document.hidden) render(true); });
   }
   ej.onSnapshot(s => {
-    const prevHk = JSON.stringify([state.snap && state.snap.hotkeys, state.snap && state.snap.profileStatus]);
+    const prevHk = JSON.stringify([state.snap && state.snap.hotkeys, state.snap && state.snap.profileStatus, state.snap && state.snap.update]);
     state.snap = s;
     // After a sync from the tile: say so once the new export has been picked up (gives up after 5 minutes).
     if (ui.weWaitSince) {

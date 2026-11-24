@@ -46,7 +46,7 @@ const DEFAULT_CONFIG = {
     font: 'app',        // app | source | bahnschrift | inter | segoe
     show: { zone: true, map: true, campaign: false, splits: false, session: true },
   },
-  hotkeys: { toggleOverlay: 'Ctrl+Alt+T', unlockOverlay: 'Ctrl+Alt+L', focusDashboard: 'Ctrl+Alt+J', breakTaken: '', essenceOverlay: '', weSync: '' },
+  hotkeys: { toggleOverlay: 'Ctrl+Alt+T', unlockOverlay: 'Ctrl+Alt+L', focusDashboard: 'Ctrl+Alt+J', breakTaken: '', essenceOverlay: '', weSync: '', sheetWindow: '' },
   // Essence upgrade overlay over the essence stash tab, shown with its hotkey (enabled = the hotkey works).
   // display: the id of a screen picked in Settings; null = automatic (from the game's own settings file).
   essences: { enabled: true, display: null },
@@ -72,7 +72,7 @@ const DEFAULT_CONFIG = {
     hidden: {},
   },
   window: { bounds: null, maximized: false },
-  neversink: { lastSyncedTag: null, syncedAt: null },
+  neversink: { lastSyncedTag: null, syncedAt: null, remind: true },
   // Lifetime disk counters (bytes), kept here so a rebuild, restore or new league doesn't reset them.
   io: { since: null, dbWritten: 0, backupWritten: 0, configWritten: 0, iconWritten: 0, wealthWritten: 0, logRead: 0, otherRead: 0 },
 };
@@ -132,11 +132,13 @@ function sanitizeConfig() {
   c.essences = { enabled: !(c.essences && c.essences.enabled === false), display: c.essences && Number.isFinite(c.essences.display) ? c.essences.display : null };
   if (typeof c.hotkeys.essenceOverlay !== 'string') c.hotkeys.essenceOverlay = '';
   if (typeof c.hotkeys.weSync !== 'string') c.hotkeys.weSync = '';
+  if (typeof c.hotkeys.sheetWindow !== 'string') c.hotkeys.sheetWindow = '';
   // v0.6 Home is a new layout: an order from the old tile grid is replaced once by the new default.
   if (c.layout.v !== 6) { c.layout.order = ['poe', 'wealthy', 'ninja', 'maps', 'pob', 'campaign', 'filter', 'overlay', 'apt', 'today']; c.layout.v = 6; }
   const order = (c.layout.order || []).filter(id => CARD_IDS.includes(id));
   for (const id of CARD_IDS) if (!order.includes(id)) order.push(id);
   c.layout.order = order;
+  c.neversink = { lastSyncedTag: c.neversink && typeof c.neversink.lastSyncedTag === 'string' ? c.neversink.lastSyncedTag : null, syncedAt: c.neversink && Number.isFinite(c.neversink.syncedAt) ? c.neversink.syncedAt : null, remind: !(c.neversink && c.neversink.remind === false) };
   for (const [id, sz] of Object.entries(c.layout.sizes || {})) if (!SIZES.includes(sz)) delete c.layout.sizes[id];
   delete c.links; delete c.background;
 }
@@ -419,10 +421,33 @@ function autoDetectPaths() {
 }
 
 // For Settings: which screen "Automatic" picks right now (checked at most once a minute).
-let gameDispAt = 0, gameDispId = null;
+let gameDispAt = 0, gameDispId = null, gameExclusiveFs = false;
 function gameDisplayCached() {
-  if (Date.now() - gameDispAt > 60e3) { gameDispAt = Date.now(); const g = gameDisplay(); gameDispId = g ? g.display.id : null; }
+  if (Date.now() - gameDispAt > 60e3) { gameDispAt = Date.now(); const info = gameConfig(), g = gameDisplay(info); gameDispId = g ? g.display.id : null; gameExclusiveFs = poeconfig.exclusiveFullscreen(info); }
   return gameDispId;
+}
+
+// Error texts can quote a file path, and paths hold the Windows user name.
+const scrubPaths = t => String(t).replace(/([\\/](?:Users|home)[\\/])[^\\/'"]+/gi, '$1<user>').replace(/'[^']*[\\/][^']*'|"[^"]*[\\/][^"]*"/g, '<path>').replace(/(?:[A-Za-z]:|\\\\)[\\/][^'"\s]*/g, '<path>').slice(0, 300);
+
+// Plain-text diagnostics for someone helping out: versions, which paths are set and found, states and recent errors.
+// No account name, no paths (they hold the Windows user name), no character names.
+function diagnostics() {
+  const p = pathsCache || pathStatus(), yes = v => (v ? 'yes' : 'no');
+  const w = wealth ? wealth.summary(leagueStartMs()) : null;
+  return [
+    `Exilogue ${app.getVersion()} · Electron ${process.versions.electron} · Windows ${require('os').release()}`,
+    `League: ${config.data.league.name} · start ${config.data.league.start}`,
+    `Game: path ${yes(config.data.paths.poeExe)}, found ${yes(p.poeExe)}${config.data.detected && config.data.detected.poe ? ' (' + config.data.detected.poe + ')' : ''} · running ${yes(gameRunning)}`,
+    `Client.txt: set ${yes(config.data.paths.clientTxt)}, readable ${yes(p.clientTxt)}${logMissing ? ', missing' : ''} · caught up ${yes(caughtUp)}`,
+    `Path of Building: ${yes(p.pobExe)} · Awakened PoE Trade: ${yes(p.aptExe)}`,
+    `Overlay: ${config.data.overlay.enabled ? 'on' : 'off'} · exclusive fullscreen ${yes(gameExclusiveFs)} · screens ${screen.getAllDisplays().length}`,
+    `Hotkeys: ${Object.entries(hotkeyStatus || {}).filter(([, v]) => v && v !== 'ok' && v !== 'none').map(([k, v]) => k + ' ' + v).join(', ') || 'all ok'}`,
+    `Updates: ${updateState.state}${updateState.error ? ' · ' + scrubPaths(updateState.error) : ''}`,
+    `poe.ninja: ${ninja.rev ? 'prices loaded' : 'no prices yet'} · profile: ${profileStatus.state}`,
+    `Wealthy Exile: exports ${w ? w.count || 0 : 0} · script ${weScriptVersion || config.data.weSync.seenVersion || 'never seen'}${weServer && weServer.error ? ' · server ' + scrubPaths(weServer.error) : ''}${wealth && wealth.lastError ? ' · last error ' + scrubPaths(wealth.lastError.msg || '') : ''}`,
+    `Database: ${leagueDb && leagueDb.corruptFile ? 'a damaged file was set aside' : 'ok'}`,
+  ].join('\n');
 }
 
 function snapshot() {
@@ -438,6 +463,7 @@ function snapshot() {
     overlayUnlocked,
     displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, n: i + 1, label: d.label || '', w: Math.round(d.size.width * d.scaleFactor), h: Math.round(d.size.height * d.scaleFactor), primary: d.id === screen.getPrimaryDisplay().id })),
     gameDisplayId: gameDisplayCached(),
+    exclusiveFullscreen: gameExclusiveFs,
     profileStatus,
     stateCorrupt: leagueDb && leagueDb.corruptFile ? path.basename(leagueDb.corruptFile) : null,
     stats: tracker ? tracker.snapshot(Date.now()) : null,
@@ -467,7 +493,7 @@ const hiddenWc = new Set(); // windows whose page reports it can't be seen (cove
 let lastIdleTick = 0;
 function statusKey() {
   return JSON.stringify([gen, updateState, overlayNoteState && overlayNoteState.until, breakPrompt && [breakPrompt.shownAt, breakPrompt.revealed], ninja.rev, sheetCache.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [(weManualTick(), wealth.rev), wealth.lastError, wealthSyncAt, weBgSyncAt, weManualExpiredAt, weFailAt, weScriptVersion, Math.floor(weScriptSeenAt / 300000), weBgNext().state] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, overlayUnlocked,
-    profileStatus, neversinkLatest, config.data.neversink, pathsCache, leagueDb && leagueDb.corruptFile]);
+    profileStatus, neversinkLatest, config.data.neversink, pathsCache, leagueDb && leagueDb.corruptFile, (gameDisplayCached(), gameExclusiveFs)]);
 }
 function broadcast() {
   const wins = [dashWin, overlayWin, sheetWin].filter(w => w && !w.isDestroyed() && w.isVisible() && !w.isMinimized() && !hiddenWc.has(w.webContents.id));
@@ -618,10 +644,12 @@ async function toggleEssences() {
 
 // The screen the game runs on, from Documents\My Games\Path of Exile\production_Config.ini (monitor name, else
 // a unique resolution). Read on every press: cheap, and it follows changes in the game's settings.
-function gameDisplay() {
-  let info = null;
-  try { info = poeconfig.parseDisplay(fs.readFileSync(path.join(app.getPath('documents'), 'My Games', 'Path of Exile', 'production_Config.ini'), 'utf8')); }
+function gameConfig() {
+  try { return poeconfig.parseDisplay(fs.readFileSync(path.join(app.getPath('documents'), 'My Games', 'Path of Exile', 'production_Config.ini'), 'utf8')); }
   catch { return null; }
+}
+function gameDisplay(info = gameConfig()) {
+  if (!info) return null;
   const all = screen.getAllDisplays();
   const m = poeconfig.matchDisplay(all.map(d => ({ id: d.id, label: d.label, width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) })), info);
   return m ? { display: all.find(d => d.id === m.id), how: m.how } : null;
@@ -685,6 +713,14 @@ const HOTKEY_ACTIONS = {
   focusDashboard: () => { if (dashWin) { if (dashWin.isMinimized()) dashWin.restore(); dashWin.show(); dashWin.focus(); } },
   breakTaken: () => takeBreak(),
   essenceOverlay: () => toggleEssences(),
+  // Shown over the game (pinned, or raised by this key) → close. Otherwise open it or bring it over the game, kept on top
+  // until it closes, without taking the keyboard from the game.
+  sheetWindow: () => {
+    if (sheetWin && !sheetWin.isDestroyed() && sheetWin.isVisible() && !sheetWin.isMinimized() && sheetWin.isAlwaysOnTop()) { sheetWin.close(); return; }
+    openSheetWindow({ inactive: true });
+    sheetRaised = true; applySheetPin();
+    if (sheetWin && !sheetWin.isDestroyed()) sheetWin.moveTop();
+  },
   // Like the Sync & export button, but only in an open Wealthy Exile tab: it never opens the browser mid-game.
   weSync: () => {
     const r = weSyncNow({ noOpen: true });
@@ -1190,8 +1226,10 @@ function sheetsInfo() {
   return { prices: sheetCache.prices, at: sheetCache.at, partial: sheetCache.partial, divineChaos: (ninja.currency && ninja.currency.divineChaos) || null,
     iconIds: Object.fromEntries(sheetRefs().filter(icon).map(r => [r.type + ':' + r.id, sheetIconId(r.type, r.id)])) };
 }
-function openSheetWindow() {
-  if (sheetWin && !sheetWin.isDestroyed()) { if (sheetWin.isMinimized()) sheetWin.restore(); sheetWin.show(); sheetWin.focus(); return; }
+// inactive: from the hotkey, so the game keeps keyboard focus.
+function openSheetWindow({ inactive = false } = {}) {
+  // showInactive also restores a minimized window, without taking the keyboard from the game (restore() would).
+  if (sheetWin && !sheetWin.isDestroyed()) { if (inactive) sheetWin.showInactive(); else { if (sheetWin.isMinimized()) sheetWin.restore(); sheetWin.show(); sheetWin.focus(); } return; }
   const w = config.data.sheets.win;
   // Only reuse the saved spot if it is still on a screen (a monitor may be gone).
   let pos = {};
@@ -1208,7 +1246,7 @@ function openSheetWindow() {
   sheetWin.loadFile(path.join(__dirname, '..', 'sheet', 'sheet.html'));
   sheetPinApplied = null;
   applySheetPin();
-  sheetWin.once('ready-to-show', () => sheetWin && sheetWin.show());
+  sheetWin.once('ready-to-show', () => sheetWin && (inactive ? sheetWin.showInactive() : sheetWin.show()));
   let t = null;
   const save = () => {
     clearTimeout(t);
@@ -1221,15 +1259,16 @@ function openSheetWindow() {
   };
   sheetWin.on('move', save);
   sheetWin.on('resize', save);
-  sheetWin.on('closed', () => { sheetWin = null; });
+  sheetWin.on('closed', () => { sheetWin = null; sheetRaised = false; });
   sheetTick(true);
 }
 // Pinned: the same level as the overlay ('screen-saver'), so a borderless game doesn't cover it. Only applied when the
 // pin really changes: re-applying it on every save made Windows flash the window.
-let sheetPinApplied = null;
+// sheetRaised: brought over the game by its hotkey; stays on top until the window closes (the saved pin is untouched).
+let sheetPinApplied = null, sheetRaised = false;
 function applySheetPin() {
   if (!sheetWin || sheetWin.isDestroyed()) return;
-  const on = !!config.data.sheets.win.pin;
+  const on = !!config.data.sheets.win.pin || sheetRaised;
   if (sheetPinApplied === on) return;
   sheetPinApplied = on;
   if (on) sheetWin.setAlwaysOnTop(true, 'screen-saver'); else sheetWin.setAlwaysOnTop(false);
@@ -1578,6 +1617,11 @@ function setupIpc() {
   ipcMain.handle('snapshot', e => { sentKey.set(e.sender.id, statusKey()); return snapshot(); });
   ipcMain.on('win:visible', (e, visible) => { if (visible) hiddenWc.delete(e.sender.id); else hiddenWc.add(e.sender.id); });
   ipcMain.handle('storage:get', () => storageInfo());
+  ipcMain.handle('pob:folder', async () => {
+    const dir = pobBuild && pobBuild.file ? path.dirname(pobBuild.file) : path.join(app.getPath('documents'), 'Path of Building', 'Builds');
+    const err = await shell.openPath(dir); return err ? { ok: false, error: err } : { ok: true };
+  });
+  ipcMain.handle('diag:copy', () => { clipboard.writeText(diagnostics()); return true; });
   ipcMain.handle('storage:open', async () => { const err = await shell.openPath(app.getPath('userData')); return err ? { ok: false, error: err } : { ok: true }; });
   ipcMain.handle('break:taken', () => { takeBreak(); return true; });
   ipcMain.handle('update:install', async () => {
@@ -1631,7 +1675,7 @@ function setupIpc() {
     return r.canceled ? null : r.filePaths[0];
   });
   ipcMain.handle('neversink:synced', () => {
-    if (neversinkLatest) { config.data.neversink = { lastSyncedTag: neversinkLatest.tag, syncedAt: Date.now() }; config.save(); }
+    if (neversinkLatest) { config.data.neversink = { ...config.data.neversink, lastSyncedTag: neversinkLatest.tag, syncedAt: Date.now() }; config.save(); }
     return true;
   });
   ipcMain.handle('league:reset', () => {

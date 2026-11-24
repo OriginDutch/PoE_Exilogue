@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('ej', {
   openUrl: url => ipcRenderer.invoke('open:url', url),
   pathsDetect: () => ipcRenderer.invoke('paths:detect'),
   openDataFolder: () => ipcRenderer.invoke('storage:open'),
+  openPobFolder: () => ipcRenderer.invoke('pob:folder'),
+  copyDiagnostics: () => ipcRenderer.invoke('diag:copy'),
   weSetupInfo: () => ipcRenderer.invoke('we:setup-info'),
   weSetupOpen: (what, browser) => ipcRenderer.invoke('we:setup-open', what, browser),
   weSetupCopy: browser => ipcRenderer.invoke('we:setup-copy', browser),
