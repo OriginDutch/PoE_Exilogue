@@ -9,6 +9,7 @@ const { LeagueDb, checkFile } = require('./db');
 const { IconStore } = require('./icons');
 const { Wealth } = require('./wealth');
 const essences = require('../core/essences');
+const poeconfig = require('../core/poeconfig');
 const { NinjaPrice, ITEM_TYPES: NINJA_TYPES, SHEET_TYPES } = require('./ninja');
 const { EdgeWe } = require('./edge');
 const { shouldSync, WeSyncServer } = require('./wesync');
@@ -46,7 +47,7 @@ const DEFAULT_CONFIG = {
   },
   hotkeys: { toggleOverlay: 'Ctrl+Alt+T', unlockOverlay: 'Ctrl+Alt+L', focusDashboard: 'Ctrl+Alt+J', breakTaken: '', essenceOverlay: '' },
   // Essence upgrade overlay over the essence stash tab, shown with its hotkey (enabled = the hotkey works).
-  // display: the id of the screen the game is on (null = the primary screen).
+  // display: the id of a screen picked in Settings; null = automatic (from the game's own settings file).
   essences: { enabled: true, display: null },
   // "Take a break?": asked after `everyMin` of play, ~10 s after leaving a map (or entering a town in the campaign).
   // sound: a short chime when "Take a break?" shows. Off for new installs; existing installs get it on once (see startup).
@@ -365,6 +366,13 @@ function pathStatus() {
 // Checked on start, on config changes and when the dashboard gets focus; not every second.
 function refreshPaths() { pathsCache = pathStatus(); }
 
+// For Settings: which screen "Automatic" picks right now (checked at most once a minute).
+let gameDispAt = 0, gameDispId = null;
+function gameDisplayCached() {
+  if (Date.now() - gameDispAt > 60e3) { gameDispAt = Date.now(); const g = gameDisplay(); gameDispId = g ? g.display.id : null; }
+  return gameDispId;
+}
+
 function snapshot() {
   const ws = wealth ? wealth.summary(leagueStartMs()) : null;
   return {
@@ -374,7 +382,8 @@ function snapshot() {
     neversink: { latest: neversinkLatest, ...config.data.neversink },
     hotkeys: hotkeyStatus,
     overlayUnlocked,
-    displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, n: i + 1, w: Math.round(d.size.width * d.scaleFactor), h: Math.round(d.size.height * d.scaleFactor), primary: d.id === screen.getPrimaryDisplay().id })),
+    displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, n: i + 1, label: d.label || '', w: Math.round(d.size.width * d.scaleFactor), h: Math.round(d.size.height * d.scaleFactor), primary: d.id === screen.getPrimaryDisplay().id })),
+    gameDisplayId: gameDisplayCached(),
     profileStatus,
     stateCorrupt: leagueDb && leagueDb.corruptFile ? path.basename(leagueDb.corruptFile) : null,
     stats: tracker ? tracker.snapshot(Date.now()) : null,
@@ -503,7 +512,7 @@ async function toggleEssences() {
   if (!config.data.essences.enabled || !gameRunning) return;
   essBusy = true;
   try {
-    const disp = essenceDisplay();
+    const { display: disp, note } = essenceDisplay();
     const b = disp.bounds, sf = disp.scaleFactor || 1;
     if (!essWin || essWin.isDestroyed()) {
       essWin = new BrowserWindow({
@@ -525,15 +534,31 @@ async function toggleEssences() {
     essWin.showInactive();
     await freshExport(f => progress('export', f));
     progress('prices', 0.9);
-    const data = await essencePlan(hPx);
+    const data = { ...(await essencePlan(hPx)), note };
     if (essShown && essWin && !essWin.isDestroyed()) essWin.webContents.send('essences', data);
   } catch { hideEssences(); }
   finally { essBusy = false; }
 }
 
+// The screen the game runs on, from Documents\My Games\Path of Exile\production_Config.ini (monitor name, else
+// a unique resolution). Read on every press: cheap, and it follows changes in the game's settings.
+function gameDisplay() {
+  let info = null;
+  try { info = poeconfig.parseDisplay(fs.readFileSync(path.join(app.getPath('documents'), 'My Games', 'Path of Exile', 'production_Config.ini'), 'utf8')); }
+  catch { return null; }
+  const all = screen.getAllDisplays();
+  const m = poeconfig.matchDisplay(all.map(d => ({ id: d.id, label: d.label, width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) })), info);
+  return m ? { display: all.find(d => d.id === m.id), how: m.how } : null;
+}
+
+// → { display, note }: a screen picked in Settings, else the game's screen, else the main screen with a note.
 function essenceDisplay() {
   const all = screen.getAllDisplays();
-  return all.find(d => d.id === config.data.essences.display) || screen.getPrimaryDisplay();
+  const picked = config.data.essences.display != null && all.find(d => d.id === config.data.essences.display);
+  if (picked) return { display: picked, note: null };
+  const g = gameDisplay();
+  if (g) return { display: g.display, note: null };
+  return { display: screen.getPrimaryDisplay(), note: all.length > 1 ? 'Game screen not found: main screen. Pick one in Settings › Overlay' : null };
 }
 
 // Counts older than 15 minutes: ask for a new export first, but only through an open Wealthy Exile tab (the

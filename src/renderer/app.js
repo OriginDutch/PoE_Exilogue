@@ -288,7 +288,7 @@
   main.addEventListener('change', async e => {
     const t = e.target;
     if ('brkevery' in t.dataset) return save({ breaks: { everyMin: Number(t.value) } });
-    if ('essdisp' in t.dataset) return save({ essences: { display: Number(t.value) } });
+    if ('essdisp' in t.dataset) return save({ essences: { display: t.value === 'auto' ? null : Number(t.value) } });
     if ('brkvol' in t.dataset) { // arrow keys fire a change per step: save and preview once you stop
       const v = Number(t.value); clearTimeout(ui.volTimer);
       ui.volTimer = setTimeout(() => { save({ breaks: { sound: { volume: v } } }); playChime(v); }, 350);

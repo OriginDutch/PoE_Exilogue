@@ -32,6 +32,10 @@
       const t = d.at;
       html = `<div class="tot err" style="left:${px(t.x)};top:${px(t.y)};height:${px(t.h)};border-radius:${px(t.h / 2)};font-size:${px(t.h * 0.36)}">${esc(d.message)}</div>`;
     }
+    if (d.note && d.state !== 'loading') {
+      const t = d.at || d.total;
+      if (t) html += `<div class="tot err" style="left:${px(t.x)};top:${px(t.y + t.h + 8)};height:${px(t.h * 0.7)};border-radius:${px(t.h * 0.35)};font-size:${px(t.h * 0.28)}">${esc(d.note)}</div>`;
+    }
     document.body.innerHTML = html;
   });
 })();
