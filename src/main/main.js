@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, nativeImage, ipcMain, globalShortcut, shell, dialog, screen, nativeTheme, powerMonitor, clipboard } = require('electron');
+const { app, BrowserWindow, nativeImage, ipcMain, globalShortcut, shell, dialog, screen, nativeTheme, powerMonitor, clipboard, desktopCapturer } = require('electron');
 const { defaultBrowser, TAMPERMONKEY } = require('./browser');
 const path = require('path');
 const fs = require('fs');
@@ -50,7 +50,7 @@ const DEFAULT_CONFIG = {
   hotkeys: { toggleOverlay: 'Ctrl+Alt+T', unlockOverlay: 'Ctrl+Alt+L', focusDashboard: 'Ctrl+Alt+J', breakTaken: '', essenceOverlay: '', weSync: '', sheetWindow: '' },
   // Essence upgrade overlay over the essence stash tab, shown with its hotkey (enabled = the hotkey works).
   // display: the id of a screen picked in Settings; null = automatic (from the game's own settings file).
-  essences: { enabled: true, display: null },
+  essences: { enabled: true, display: null, layoutDy: null }, // layoutDy: where the essence tab sits (essenceShift), once seen for sure
   // "Take a break?": asked after `everyMin` of play, ~10 s after leaving a map (or entering a town in the campaign).
   // sound: a short chime when "Take a break?" shows. Off for new installs; existing installs get it on once (see startup).
   breaks: { enabled: true, campaign: true, everyMin: 60, sound: { on: false, volume: 50, file: 'chime' } },
@@ -130,7 +130,8 @@ function sanitizeConfig() {
     .map((x, i) => ({ id: String(x.id || 'c' + Date.now().toString(36) + i).slice(0, 40), name: String(x.name || '').slice(0, 60) || path.basename(x.target.trim()).replace(/\.exe$/i, ''), target: x.target.trim().slice(0, 500), on: x.on !== false }));
   { const d = parseFloat(String(c.goal.divines ?? '').replace(',', '.')); c.goal.divines = Number.isFinite(d) && d > 0 ? d : null; }
   if (!['s', 'm', 'l'].includes(c.overlay.size)) c.overlay.size = 'm';
-  c.essences = { enabled: !(c.essences && c.essences.enabled === false), display: c.essences && Number.isFinite(c.essences.display) ? c.essences.display : null };
+  c.essences = { enabled: !(c.essences && c.essences.enabled === false), display: c.essences && Number.isFinite(c.essences.display) ? c.essences.display : null,
+    layoutDy: c.essences && [0, essences.NO_FOLDER_DY].includes(c.essences.layoutDy) ? c.essences.layoutDy : null };
   if (typeof c.hotkeys.essenceOverlay !== 'string') c.hotkeys.essenceOverlay = '';
   if (typeof c.hotkeys.weSync !== 'string') c.hotkeys.weSync = '';
   if (typeof c.hotkeys.sheetWindow !== 'string') c.hotkeys.sheetWindow = '';
@@ -613,7 +614,36 @@ function weSyncNow({ noOpen = false } = {}) {
 // Wealthy Exile export (counts) and poe.ninja (prices); it doesn't follow what you click.
 function hideEssences() {
   essShown = false;
-  if (essWin && !essWin.isDestroyed()) essWin.hide();
+  // Empty it first, so the next press never shows (or captures) the previous press's boxes for a moment.
+  if (essWin && !essWin.isDestroyed()) { essWin.webContents.send('essences', { state: 'clear' }); essWin.hide(); }
+}
+
+// Where the essence tab sits on this player's screen (in a stash folder or not): one look at the stash's middle
+// ornament on the game's screen, at the moment of the press. Only that small patch is compared, in memory; no
+// picture is saved or sent. → shift in reference px, or null when unsure (a tooltip over it, stash closed, no capture).
+async function essenceShift(disp) {
+  try {
+    const sf = disp.scaleFactor || 1, W = Math.round(disp.size.width * sf), H = Math.round(disp.size.height * sf);
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: W, height: H } });
+    const src = sources.find(s => String(s.display_id) === String(disp.id)) || (sources.length === 1 ? sources[0] : null);
+    if (!src || src.thumbnail.isEmpty()) return null;
+    const img = src.thumbnail, size = img.getSize(), k = size.height / essences.REF_H; // thumbnail px per reference px
+    const A = essences.ANCHOR, samples = {};
+    for (const dy of [0, essences.NO_FOLDER_DY]) {
+      const rect = { x: Math.round(A.x * k), y: Math.round((A.y + dy) * k), width: Math.round(A.w * k), height: Math.round(A.h * k) };
+      if (rect.x < 0 || rect.y < 0 || rect.x + rect.width > size.width || rect.y + rect.height > size.height) continue;
+      const bmp = img.crop(rect).resize({ width: A.cols, height: A.rows, quality: 'good' }).toBitmap(); // BGRA
+      const grey = [];
+      for (let i = 0; i + 3 < bmp.length; i += 4) grey.push(0.114 * bmp[i] + 0.587 * bmp[i + 1] + 0.299 * bmp[i + 2]);
+      samples[dy] = grey;
+    }
+    return essences.pickShift(samples);
+  } catch { return null; }
+}
+// The layout last seen for sure is kept, so an unsure look (a tooltip over the ornament) never brings the wrong one.
+function rememberEssenceShift(dy) {
+  if (dy == null || dy === config.data.essences.layoutDy) return;
+  config.data.essences.layoutDy = dy; config.saveSoon();
 }
 
 let essBusy = false; // a press while the window is still being made or the plan computed is ignored
@@ -637,15 +667,23 @@ async function toggleEssences() {
     }
     essWin.setBounds(b); // twice: Windows sizes a window wrongly when it lands on a display with other scaling
     essWin.setBounds(b);
+    // Look before anything of ours is drawn there. With a layout known from before, draw at once and let the look
+    // finish while the export runs (it can only correct the final boxes); the first time, wait for it.
+    const known = config.data.essences.layoutDy;
+    const looking = essenceShift(disp);
+    let dy = known != null ? known : ((await looking) ?? 0);
     essShown = true;
     const hPx = Math.round(b.height * sf);
-    const at = essences.geometry({ rows: [], total: 0 }, hPx).total;
+    const at = essences.geometry({ rows: [], total: 0 }, hPx, dy).total;
     const progress = (step, frac) => { if (essShown && essWin && !essWin.isDestroyed()) essWin.webContents.send('essences', { state: 'loading', at, step, frac }); };
     progress('export', 0);
     essWin.showInactive();
     await freshExport(f => progress('export', f));
     progress('prices', 0.9);
-    const data = { ...(await essencePlan(hPx)), note };
+    const seen = await looking;
+    rememberEssenceShift(seen);
+    if (seen != null) dy = seen;
+    const data = { ...(await essencePlan(hPx, dy)), note };
     if (essShown && essWin && !essWin.isDestroyed()) essWin.webContents.send('essences', data);
   } catch { hideEssences(); }
   finally { essBusy = false; }
@@ -702,16 +740,16 @@ async function freshExport(onProgress) {
 }
 
 // → what the overlay draws; positions are in the game's pixels, the window divides by its own devicePixelRatio.
-async function essencePlan(heightPx) {
+async function essencePlan(heightPx, dy = 0) {
   const exp = wealth ? wealth.latestItems(items => items.some(i => / Essence of /.test(i.name))) : null; // newest export with essences
-  if (!exp || !exp.items.length) return { state: 'error', at: essences.geometry({ rows: [], total: 0 }, heightPx).total, message: 'No Wealthy Exile export yet' };
+  if (!exp || !exp.items.length) return { state: 'error', at: essences.geometry({ rows: [], total: 0 }, heightPx, dy).total, message: 'No Wealthy Exile export yet' };
   let pr;
   try { pr = await ninja.essencePrices(config.data.league.name); }
-  catch { return { state: 'error', at: essences.geometry({ rows: [], total: 0 }, heightPx).total, message: 'poe.ninja not reachable' }; }
-  if (!Object.keys(pr.prices).length) return { state: 'error', at: essences.geometry({ rows: [], total: 0 }, heightPx).total, message: 'No essence prices on poe.ninja for this league' };
+  catch { return { state: 'error', at: essences.geometry({ rows: [], total: 0 }, heightPx, dy).total, message: 'poe.ninja not reachable' }; }
+  if (!Object.keys(pr.prices).length) return { state: 'error', at: essences.geometry({ rows: [], total: 0 }, heightPx, dy).total, message: 'No essence prices on poe.ninja for this league' };
   const { counts } = essences.essenceCounts(exp.items);
   const plan = essences.plan(counts, pr.prices);
-  return { state: 'ok', stale: Date.now() - exp.at > ESS_FRESH_MS, exportAt: exp.at, pricesAt: pr.at, chaosIcon: pr.chaosIcon, ...essences.geometry(plan, heightPx) };
+  return { state: 'ok', stale: Date.now() - exp.at > ESS_FRESH_MS, exportAt: exp.at, pricesAt: pr.at, chaosIcon: pr.chaosIcon, ...essences.geometry(plan, heightPx, dy) };
 }
 
 // ---------- hotkeys ----------

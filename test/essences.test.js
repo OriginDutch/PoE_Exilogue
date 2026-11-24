@@ -123,3 +123,27 @@ test('essences: wealth.latestItems reads the newest archived export, ninja.essen
   const p = await n.essencePrices('Covens of Umbra');
   assert.deepEqual(p.prices, { 'Deafening Essence of Zeal': 22.04 });
 });
+
+test('essences: finds where the tab sits (in a stash folder or not) from the stash ornament', () => {
+  const { pickShift, NO_FOLDER_DY, ANCHOR_GREY, ncc, geometry } = require('../src/core/essences');
+  // 25×45 grey samples from two real 1080p screenshots: one with the essence tab in a folder, one without.
+  const f = require('./fixtures/essence-anchor.json');
+  assert.equal(pickShift({ 0: f.folder, [NO_FOLDER_DY]: f.folder_at35 }), 0);
+  assert.equal(pickShift({ 0: f.nofolder_at0, [NO_FOLDER_DY]: f.nofolder_at35 }), NO_FOLDER_DY);
+  assert.ok(ncc(ANCHOR_GREY, f.nofolder_at35) > 0.95);
+  // Brighter or darker gamma doesn't matter.
+  assert.equal(pickShift({ 0: f.nofolder_at0.map(v => v * 0.6 + 40), [NO_FOLDER_DY]: f.nofolder_at35.map(v => v * 0.6 + 40) }), NO_FOLDER_DY);
+  // Nothing recognisable (stash closed): unsure, so the caller keeps its last sure layout.
+  const flat = new Array(1125).fill(80), noise = Array.from({ length: 1125 }, (_, i) => (i * 7919) % 255);
+  assert.equal(pickShift({ 0: flat, [NO_FOLDER_DY]: noise }), null);
+  assert.equal(pickShift({}), null);
+  // Half the ornament covered (an item tooltip, a window): unsure, not a wrong guess.
+  const cover = g => g.map((v, i) => (i % 25 < 13 ? 30 : v));
+  assert.equal(pickShift({ 0: cover(f.nofolder_at0), [NO_FOLDER_DY]: cover(f.nofolder_at35) }), null);
+  // The shift moves boxes and the total by 35 px at 1080p, and nothing sideways.
+  const p = { rows: [{ side: 'L', row: 0, cells: [{ col: 0, box: 'g' }] }], total: 1 };
+  const a = geometry(p, 1080), b = geometry(p, 1080, NO_FOLDER_DY);
+  assert.ok(Math.abs(a.boxes[0].y - b.boxes[0].y - 35) <= 1);
+  assert.equal(a.boxes[0].x, b.boxes[0].x);
+  assert.ok(Math.abs(a.total.y - b.total.y - 35) <= 1);
+});
