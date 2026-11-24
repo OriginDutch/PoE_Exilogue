@@ -16,9 +16,10 @@
   const art = (id, cls) => { const src = E.iconOf(id); return src ? `<img class="gi ${cls}" src="${esc(src)}" alt="">` : ''; };
   // Map icon as in game: GGG serves only the glyph; the round base in the tier colour is drawn here.
   const mapIc = (zone, t, lg) => { const src = E.iconOf(glyphId(zone)); return src ? `<span class="mapic ${band(t)}${lg ? ' lg' : ''}" aria-hidden="true"><img src="${esc(src)}" alt=""></span>` : ''; };
+  // nav: the title opens the tile's page. 'title' = only the title does (the rest of the tile has its own click action).
   const head = (id, name, sub, right = '', nav = true) => {
     const def = { id, mono: E.CARDS[id] ? E.CARDS[id].mono : ({ days: 'MD', fun: 'FS' }[id] || id.slice(0, 2).toUpperCase()) };
-    const open = nav ? `<button class="open" data-nav="page:${id}">${name}</button>` : `<span class="open">${name}</span>`;
+    const open = nav ? `<button class="open${nav === 'title' ? ' open-title' : ''}" data-nav="page:${id}">${name}</button>` : `<span class="open">${name}</span>`;
     return `<div class="ch">${E.logo(def)}<div class="t">${open}${sub ? `<div class="sub ell">${sub}</div>` : ''}</div>${right}</div>`;
   };
   const pill = (on, a, b) => `<span class="pill${on ? ' ok' : ''}"><span class="d" aria-hidden="true"></span>${on ? a : b}</span>`;
@@ -86,19 +87,28 @@
     const ax = `<div class="spark-ax" aria-hidden="true"><span>${esc(ticks[0])}</span><span>${esc(ticks[1])}</span><span>${esc(ticks[2])}</span></div>`;
     return `<div class="spark-wrap"><svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Net worth from ${esc(fmt(t0))} to ${esc(fmt(t1))}: ${num(v[0])} to ${num(v[v.length - 1])} div"><path d="${d} L${w} ${h} L0 ${h}Z" fill="var(--ok)" opacity=".12"/><path d="${d}" fill="none" stroke="var(--ok)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>${ax}</div>`;
   }
+  EX.spark = spark;
   function wealthy({ snap }) {
     const w = snap.wealth;
     const ext = `<button class="btn i sm" data-act="wealth-sync" aria-label="Sync and export in Wealthy Exile" title="Sync &amp; export">${ic.refresh()}</button>`;
+    const syncBtn = `<button class="btn sm" data-act="wealth-sync">${ic.refresh()} Sync &amp; export</button>`;
     if (!w || !w.count) {
-      return `${head('wealthy', 'Wealthy Exile', 'No export yet', ext, false)}<div class="sub" style="white-space:normal">Click this tile to sync &amp; export, or export yourself (··· › Export CSV); Exilogue picks it up from Downloads.</div>
-        <div class="push"><button class="btn sm" data-url="https://wealthyexile.com/">Open Wealthy Exile ${ic.ext()}</button></div>`;
+      const ready = !!(w && (w.scriptVersion || w.scriptEverAt)); // the script has connected at least once (kept across restarts)
+      return `${head('wealthy', 'Wealthy Exile', ready ? 'No export yet' : 'Not set up yet', ready ? '' : ic.chev(), ready ? 'title' : true)}<div class="sub" style="white-space:normal">${ready
+        ? 'Press sync, or export yourself in Wealthy Exile (··· › Export CSV); Exilogue picks the file up from Downloads.'
+        : 'Net worth and profit per hour, from your Wealthy Exile stash. About 2 minutes to set up. Or export by hand (··· › Export CSV) and Exilogue picks it up from Downloads.'}</div>
+        <div class="push">${ready ? syncBtn : '<button class="btn sm" data-nav="page:wealthy">Set up</button>'}</div>`;
     }
     const top = (w.top || []).slice(0, 3).map(t => kv(`<span class="ell">${esc(t.name)}${t.qty > 1 ? ' ×' + num(t.qty, 0) : ''}</span>`, w.divPrice ? num(t.total / w.divPrice) + ' div' : num(t.total, 0) + 'c')).join('');
-    return `${head('wealthy', 'Wealthy Exile', 'Exported ' + E.ago(w.at) + (w.error ? ' · <span class="bad">last file unreadable</span>' : ''), ext, false)}
-      <div class="row between" style="align-items:flex-end"><div><div class="dv lg">${art('cur-divine', 'cur lg')}${num(w.divines)} div</div><div class="sub">${w.delta != null && w.divPrice ? `<span class="${w.delta >= 0 ? 'ok' : 'bad'}">${signed(w.delta / w.divPrice)}</span> since previous export` : 'first export'}</div></div>
+    const tooBig = w.error && /too large/.test(w.error);
+    const errRow = w.error ? `<div class="tile-err">${ic.warn()}<span>Couldn't read the newest export${tooBig ? ' (over 5 MB)' : ''}, so these numbers are from ${E.ago(w.at)}.${tooBig ? ' A filter in Wealthy Exile can make the export smaller.' : ' Press Sync &amp; export to try again.'}</span></div>` : '';
+    const failed = w.failAt && (!w.syncAt || w.failAt > w.syncAt) ? `<span class="sub bad">last sync failed ${E.ago(w.failAt)}</span>` : '';
+    return `${head('wealthy', 'Wealthy Exile', 'Exported ' + E.ago(w.at), ext, 'title')}${errRow}
+      <div class="row between" style="align-items:flex-end"><div><div class="dv lg">${w.divines != null ? art('cur-divine', 'cur lg') + num(w.divines) + ' div' : num(w.chaos, 0) + 'c'}</div><div class="sub">${w.delta != null && w.divPrice ? `<span class="${w.delta >= 0 ? 'ok' : 'bad'}">${signed(w.delta / w.divPrice)}</span> since previous export` : 'first export'}</div></div>
         <div class="sub" style="text-align:right">${num(w.chaos, 0)}c<br>${w.divPrice ? '1 div = ' + num(w.divPrice, 0) + 'c' : ''}</div></div>
       ${spark(w.history)}
-      <div class="dlist">${top}</div>`;
+      <div class="dlist">${top}</div>
+      ${w.error || failed ? `<div class="row push between" style="gap:8px">${syncBtn}${failed}</div>` : ''}`;
   }
 
   // ---------- poe.ninja: goal, prices, your items over 24 h ----------
@@ -265,7 +275,9 @@
   EX.tileHtml = (id, ctx) => {
     const t = EX.TILES[id];
     // Clicking anywhere on the Wealthy Exile tile syncs & exports (mouse); the ↻ button in its header does the same for keyboards.
-    const act = id === 'wealthy' ? ' data-act="wealth-sync" title="Click to sync &amp; export in Wealthy Exile" style="cursor:pointer"' : '';
+    // Not set up yet: the tile leads to the Wealthy Exile page instead (its title and Set up button).
+    const w = ctx.snap && ctx.snap.wealth, weReady = !!(w && (w.count || w.scriptVersion || w.scriptEverAt));
+    const act = id === 'wealthy' && weReady ? ' data-act="wealth-sync" title="Click to sync &amp; export in Wealthy Exile" style="cursor:pointer"' : '';
     return `<section class="card dn${t.wide ? ' wide' : ''}${id === 'poe' ? ' poe' : ''}" data-card="${id}"${act}>${t.render(ctx)}</section>`;
   };
 })();

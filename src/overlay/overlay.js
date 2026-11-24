@@ -34,7 +34,9 @@
          <span class="hdl hl ht" data-h="l" aria-hidden="true"></span><span class="hdl hr2 ht" data-h="r" aria-hidden="true"></span>
          <span class="hdl hl hb" data-h="l" aria-hidden="true"></span><span class="hdl hr2 hb" data-h="r" aria-hidden="true"></span>`
       : '';
-    const html = rows + extra;
+    // A short note from a hotkey (e.g. Sync & export), shown a few seconds above the rows.
+    const note = snap.overlayNote ? `<div class="pz ovnote">${E.esc(snap.overlayNote)}</div>` : '';
+    const html = note + rows + extra;
     if (html + brkHtml === lastHtml && cls + cfg.ui.motion === lastCls) return; // nothing visible changed: no DOM work, no layout read
     lastHtml = html + brkHtml; lastCls = cls + cfg.ui.motion;
     if (bp && !brkSide) {

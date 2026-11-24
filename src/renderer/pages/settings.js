@@ -90,10 +90,6 @@
     const custom = L.custom.map(c => `<div class="row between" style="gap:12px;padding:8px 0;border-bottom:1px solid var(--line)">
       <div class="grow" style="min-width:0"><div style="font-weight:600">${E.esc(c.name)}</div><div class="sub ell">${E.esc(c.target)}</div></div>
       <button class="btn q sm" data-lremove="${E.esc(c.id)}">Remove</button>${E.sw(c.on, 'Start ' + c.name + ' with the game', 'launchc:' + c.id)}</div>`).join('');
-    const ws = EX.weSetup, connected = w.scriptSeenAt && Date.now() - w.scriptSeenAt < 3 * 60e3 && !w.scriptOld && !w.serverError;
-    // Connected and up to date: just the status, the steps fold away (still one click to see them).
-    const setup = connected && !ui.wsOpen ? `<div style="display:flex;flex-direction:column;gap:10px">${ws.statusHtml(snap)}<div><button class="btn q sm" data-act="ws-toggle">Show the steps</button></div></div>`
-      : ws.html(snap, ui, 'settings') + (connected ? '<div style="margin-top:10px"><button class="btn q sm" data-act="ws-toggle">Hide the steps</button></div>' : '');
     return `<section class="setrow"><div><h2>Start with the game</h2><p>When you press Play in Exilogue, these start too. Tools that are already open are skipped. They keep running when the game closes. Starting the game outside Exilogue starts nothing.</p></div>
         <div>${tool('pob', 'Path of Building', P.pobExe || 'Set the path in Settings › Paths', snap.paths.pobExe)}${tool('apt', 'Awakened PoE Trade', P.aptExe || 'Set the path in Settings › Paths', snap.paths.aptExe)}${tool('we', 'Wealthy Exile', 'Opens wealthyexile.com in your browser')}${custom}</div></section>
       <section class="setrow"><div><h2>Add a program or link</h2><p>Any program (.exe) or https link, started along with the game.</p></div>
@@ -101,13 +97,7 @@
           <div class="field"><label class="lbl" for="lc-name">Name</label><input id="lc-name" class="input" data-lnew="name" value="${E.esc(ui.lnewName || '')}" placeholder="Optional"></div>
           <div class="field"><label class="lbl" for="lc-target">Program or link</label><div class="row" style="gap:8px"><input id="lc-target" class="input" data-lnew="target" value="${E.esc(ui.lnewTarget || '')}" placeholder="C:\\…\\Tool.exe or https://…"><button class="btn" data-act="launch-browse">${ic.folder()} Browse</button></div></div>
           <div><button class="btn p" data-act="launch-add">Add</button></div></div></section>
-      <section class="setrow"><div><h2>Connect Wealthy Exile</h2><p>Exilogue gets your net worth and profit per hour from Wealthy Exile. A small script in your browser (through Tampermonkey) syncs and exports there when Exilogue asks, and Exilogue reads the export from Downloads. Exilogue ships the script, so it stays in step with the version you have.</p></div>
-        <div>${setup}</div></section>
-      <section class="setrow" style="border-bottom:0"><div><h2>Wealthy Exile in the background</h2><p>While you play, Exilogue lets the userscript sync and export about every ${cfg.weSync.everyMin} minutes, in a map or out of one. Not while you're away from the PC. Only works while a Wealthy Exile tab is open in your browser; with one open, the tile button syncs there instead of opening a new tab.</p></div>
-        <div style="display:flex;flex-direction:column;gap:12px">
-          <div class="row between"><span>Sync in the background</span>${E.sw(cfg.weSync.background, 'Sync Wealthy Exile in the background', 'wesync-toggle')}</div>
-          <div class="row between"><span class="muted">At most every</span><select class="select" style="width:auto" data-weevery>${[15, 30, 45, 60, 90].map(m => `<option value="${m}" ${cfg.weSync.everyMin === m ? 'selected' : ''}>${m} min</option>`).join('')}</select></div>
-          </div></section>`;
+      <div class="note" style="margin-top:14px">${ic.info()}<span>Wealthy Exile (connecting, and syncing while you play) has its own page. <button class="lnk" data-nav="page:wealthy">Open Wealthy Exile</button></span></div>`;
   }
 
   function hotkeys(cfg, snap, ui) {
@@ -125,6 +115,7 @@
       row('unlockOverlay', 'Unlock overlay', 'Unlock to drag and resize the overlay; press again to lock.') +
       row('focusDashboard', 'Focus Exilogue', 'Bring this window to the front.') +
       row('breakTaken', 'I took a break', 'Answers "Take a break?" with yes, or marks a break you took yourself.') +
+      row('weSync', 'Sync & export (Wealthy Exile)', 'Sync and export in your open Wealthy Exile tab, without leaving the game. With no tab open it does nothing, and the overlay (when it is on) says so.') +
       row('essenceOverlay', 'Essence upgrade overlay', 'Open your essence stash tab and press it: marks what is worth upgrading. Press again to hide.') +
       `<div class="note" style="margin-top:14px">${ic.info()}<span>Numpad keys and F13–F24 work on their own (handy for macro keys; numpad needs Num Lock on). Other keys need Ctrl, Alt or Shift, so normal typing stays free. A hotkey here is taken from the game while Exilogue runs.</span></div>`;
   }

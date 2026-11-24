@@ -297,6 +297,56 @@
     },
   };
 
+  // ---------- Wealthy Exile ----------
+  // Net worth and profit from the exports, sync settings and the connection (Tampermonkey + the script Exilogue ships).
+  // "Connected" = the script has talked to Exilogue at least once; a closed browser tab doesn't undo that.
+  EX.pages.wealthy = {
+    live: true,
+    render({ snap, cfg }) {
+      const w = snap.wealth || {}, ui = EX.ui, ws = EX.weSetup;
+      const n = (v, d = 1) => v == null || !Number.isFinite(v) ? '–' : Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('en-US') : v.toFixed(Math.abs(v) >= 100 ? 0 : d);
+      const live = w.scriptSeenAt && Date.now() - w.scriptSeenAt < 3 * 60e3;
+      const hk = (key, label) => cfg.hotkeys[key] ? `<button class="hkchip" data-nav="settings:hotkeys" title="Change in Settings › Hotkeys">${E.kbd(cfg.hotkeys[key])}</button>` : `<button class="btn q sm" data-nav="settings:hotkeys" aria-label="Set a hotkey for ${label}">Set a hotkey</button>`;
+      const ever = w.scriptEverAt || w.scriptSeenAt; // kept across restarts
+      const connected = !!(ever || w.scriptVersion);
+      const silent = connected && !live && ever && Date.now() - ever > 3 * 86400e3;
+      const problem = w.serverError || w.scriptOld; // these need the steps (or a restart), so they come first
+      const [pillCls, pillTxt] = w.serverError ? ['', 'Port 47615 is taken'] : w.scriptOld ? ['acc', 'Script update ready'] : live ? ['ok', 'Connected'] : silent ? ['', 'Not heard from in days'] : connected ? ['acc', 'No Wealthy Exile tab open'] : ['', 'Not set up yet'];
+      const right = `<span class="pill ${pillCls}"><span class="d" aria-hidden="true"></span>${pillTxt}</span>
+        <button class="btn lg" data-url="https://wealthyexile.com/">Open site ${ic.ext()}</button>
+        ${connected ? `<button class="btn p lg" data-act="wealth-sync" title="${live ? 'Sync and export in your open tab' : 'Opens Wealthy Exile, syncs and exports'}">${ic.refresh()} Sync &amp; export</button>` : ''}`;
+      const dr = snap.divRate || {};
+      const sg = v => v == null || !Number.isFinite(v) ? '–' : `<span class="${v >= 0 ? 'ok' : 'bad'}">${v >= 0 ? '+' : '−'}${n(Math.abs(v))} div</span>`;
+      // Same rules as the background sync itself (main.js weBgNext).
+      const bn = w.bgNext || {}, nextTxt = { off: 'off', 'no-game': 'when you play', away: 'when you are back at the PC', 'no-tab': 'waits for a Wealthy Exile tab', reading: 'after Exilogue has read the log' }[bn.state]
+        || (bn.at ? (bn.at - Date.now() <= 60e3 ? 'any moment' : 'in ~' + Math.round((bn.at - Date.now()) / 60e3) + ' min') : '–');
+      const top = (w.top || []).map(t => `<tr><td>${E.esc(t.name)}</td><td class="r">${t.qty > 1 ? n(t.qty, 0) : '1'}</td><td class="r">${w.divPrice ? n(t.total / w.divPrice) + ' div' : n(t.total, 0) + 'c'}</td></tr>`).join('');
+      const steps = connected && !problem && !ui.wsOpen ? `<div style="display:flex;flex-direction:column;gap:10px">${ws.statusHtml(snap)}<div><button class="btn q sm" data-act="ws-toggle">Show the setup steps</button></div></div>` : ws.html(snap, ui, 'settings') + (connected && !problem ? '<div style="margin-top:10px"><button class="btn q sm" data-act="ws-toggle">Hide the steps</button></div>' : '');
+      return `<div class="ph"><span class="logo lg" aria-hidden="true">WE</span><div class="grow"><h1 class="h">Wealthy Exile</h1><div class="sub" style="margin-top:4px">Net worth and profit per hour, from your Wealthy Exile exports</div></div><div class="row" style="gap:10px">${right}</div></div>
+        <div class="cols" style="align-items:stretch">
+          ${connected || w.count ? '' : `<section class="box span2 we-intro"><h2>What you get</h2><p class="sub" style="white-space:normal;margin:0">Your net worth over the league, profit per hour on Home and in the overlay, and how close you are to your goal. Wealthy Exile counts your stash; Exilogue asks it to sync while you play. Set it up once below, or export by hand in Wealthy Exile (··· › Export CSV): Exilogue picks the file up from Downloads.</p></section>`}
+          ${connected && !w.count ? `<section class="box span2"><h2>No export yet</h2><p class="sub" style="white-space:normal;margin:0">Press Sync &amp; export, or export in Wealthy Exile yourself (··· › Export CSV). Exilogue picks the file up from Downloads.</p></section>` : ''}
+          ${w.error ? `<section class="box span2"><div class="tile-err">${ic.warn()}<span>Couldn't read the newest export: ${E.esc(String(w.error).replace(/\.\s*$/, ''))}.${w.count ? ' The numbers below are from the export before.' : ''}</span></div></section>` : ''}
+          ${w.count ? `          <section class="box span2"><div class="bh"><h2>Net worth</h2><span class="sub">Exported ${w.at ? E.ago(w.at) : '–'}</span></div>
+            <div><div style="font-size:40px;font-weight:600;line-height:1">${w.divines != null ? n(w.divines) + ' div' : n(w.chaos, 0) + 'c'}</div>
+              <div class="sub" style="margin-top:6px">${[n(w.chaos, 0) + 'c', w.divPrice ? '1 div = ' + n(w.divPrice, 0) + 'c' : '', w.delta != null && w.divPrice ? `${sg(w.delta / w.divPrice)} since previous export` : ''].filter(Boolean).join(' · ')}</div></div>
+            <div class="we-big">${EX.spark(w.history)}</div></section>
+          <section class="box"><div class="bh"><h2>This session</h2><span class="sub">from exports during play</span></div>
+            <div class="dlist"><div><span>Profit per hour</span><b class="${dr.perHour == null ? '' : dr.perHour >= 0 ? 'ok' : 'bad'}">${n(dr.perHour, 2)} div/h</b></div><div><span>Gained this session</span><b>${sg(dr.divines)}</b></div><div><span>Exports this league</span><b>${w.count || 0}</b></div><div><span>Next background sync</span><b>${nextTxt}</b></div></div></section>
+          <section class="box"><div class="bh"><h2>Biggest items</h2><span class="sub">in your newest export</span></div>
+            ${top ? '' : '<div class="sub">Shows up with the next export.</div>'}<table class="tbl"${top ? '' : ' hidden'}><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Worth</th></tr></thead><tbody>${top}</tbody></table></section>
+` : ''}
+${connected ? '' : `          <section class="box box-full"><div class="bh"><h2>Connection</h2><span class="sub">Tampermonkey + the Exilogue script, set up once</span></div>${steps}</section>`}
+          ${connected ? `<section class="box"><div class="bh"><h2>Sync while you play</h2>${E.sw(cfg.weSync.background, 'Sync Wealthy Exile in the background', 'wesync-toggle')}</div>
+            <div class="row between"><span class="muted">At most every</span><select class="select" style="width:auto" data-weevery>${[15, 30, 45, 60, 90].map(m => `<option value="${m}" ${cfg.weSync.everyMin === m ? 'selected' : ''}>${m} min</option>`).join('')}</select></div>
+            <div class="row between"><span class="muted">Hotkey</span>${hk('weSync', 'sync and export')}</div>
+            ${E.note('About every ' + cfg.weSync.everyMin + ' minutes while you play, in a map or out of one; not while you are away from the PC. Needs an open Wealthy Exile tab in your browser.')}</section>` : ''}
+${connected ? `          <section class="box"><div class="bh"><h2>Connection</h2><span class="sub">Tampermonkey + the Exilogue script, set up once</span></div>${steps}</section>` : ''}
+        </div>`;
+    },
+  };
+
+
   // ---------- Loot filter ----------
   EX.pages.filter = {
     live: false, // no timers on this page

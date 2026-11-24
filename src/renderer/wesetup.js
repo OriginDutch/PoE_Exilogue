@@ -1,6 +1,6 @@
 'use strict';
 // "Connect Wealthy Exile": the three steps (Tampermonkey, allow user scripts, install Exilogue's script).
-// Used on Home (once, for new installs) and in Settings › Launch. The script itself is served by Exilogue.
+// Used on the Wealthy Exile page; Home offers it once to new installs. The script itself is served by Exilogue.
 (function () {
   const E = window.EX, ic = () => E.icon;
   const NAMES = { firefox: 'Firefox', chrome: 'Chrome', edge: 'Edge' };
@@ -28,10 +28,12 @@
   function statusHtml(snap) {
     const s = status(snap), w = s.w;
     if (s.kind === 'port') return `<span class="st no" style="white-space:normal">${ic().warn()} Port 47615 is taken by another program (${E.esc(w.serverError)}). The script can't reach Exilogue, and can't be installed, until Exilogue restarts.</span>`;
-    if (s.kind === 'old') return `<span class="st no" style="white-space:normal">${ic().warn()} Your script is ${w.scriptVersion === '1.x' ? 'an older version' : 'version ' + E.esc(w.scriptVersion)}; Exilogue has ${E.esc(w.scriptShipped || '')}. Press Install the script below and Tampermonkey replaces it.</span>`;
+    if (s.kind === 'old') return `<span class="st no" style="white-space:normal">${ic().warn()} Your script is ${!w.scriptVersion || w.scriptVersion === '1.x' ? 'an older version' : 'version ' + E.esc(w.scriptVersion)}; Exilogue has ${E.esc(w.scriptShipped || '')}. Press Install the script below and Tampermonkey replaces it.</span>`;
     if (s.kind === 'ok') return `<span class="st ok">${ic().check()} Connected · script ${E.esc(w.scriptVersion || '')} · last asked ${E.ago(w.scriptSeenAt)}</span>`;
-    if (!w.scriptSeenAt) return `<span class="muted" style="font-size:13px">Waiting for the script. It says hello once a Wealthy Exile tab is open.</span>`;
-    return `<span class="st no" style="white-space:normal">${ic().warn()} Not heard from since ${E.ago(w.scriptSeenAt)}. The script only talks to Exilogue while a Wealthy Exile tab is open.</span>`;
+    const ever = w.scriptEverAt || w.scriptSeenAt; // kept across restarts
+    if (!ever) return `<span class="muted" style="font-size:13px">Waiting for the script. It says hello once a Wealthy Exile tab is open.</span>`;
+    if (Date.now() - ever > 3 * 86400e3) return `<span class="st no" style="white-space:normal">${ic().warn()} Not heard from in ${E.ago(ever).replace(' ago', '')}. If you did use Wealthy Exile since, check that Tampermonkey and the script are still on.</span>`;
+    return `<span class="sub" style="white-space:normal">Set up. Last heard ${E.ago(ever)}; the script only talks to Exilogue while a Wealthy Exile tab is open. Sync &amp; export opens one for you.</span>`;
   }
 
   // Drawn, not a screenshot: the extension's details page with the one switch that matters.
@@ -50,7 +52,7 @@
     <path d="M296 104 l12 14 m0 0 l-1 -8 m1 8 l-8 -2" stroke="var(--acc)" stroke-width="2" fill="none" stroke-linecap="round"/>
   </svg>`;
 
-  // where: 'home' (with Do it later) or 'settings'
+  // The steps, on the Wealthy Exile page.
   function html(snap, ui, where) {
     const b = browser(ui), s = status(snap);
     const pick = `<label class="ws-pick"><span class="muted">Your browser</span><select class="select" style="width:auto" data-wsbrowser aria-label="Your browser">
@@ -69,18 +71,18 @@
         <p>Tampermonkey shows the script; press <b>Install</b>${s.kind === 'old' ? ' (or Update)' : ''}. After that it follows Exilogue's updates by itself. Then open Wealthy Exile and log in; the tab may stay open in the background.</p>
         <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn p" data-act="ws-script" ${s.kind === 'port' ? 'disabled' : ''}>Install the script</button><button class="btn" data-act="ws-site">Open Wealthy Exile</button></div>
         <div style="margin-top:10px" role="status">${statusHtml(snap)}</div></div></li>`;
-    const later = where === 'home' ? `<button class="btn q" data-act="ws-later">Do it later</button>` : '';
+    const later = '';
     return `<div class="wesetup">
       <div class="row between" style="gap:12px;flex-wrap:wrap;margin-bottom:14px">${pick}${later}</div>
       <ol class="steps ws-steps">${step1}${step2}${step3}</ol></div>`;
   }
 
-  // Home: once for new installs, after the game paths. Settings › Launch keeps the steps for later.
+  // Home: once for new installs, after the game paths. One line; the steps are on the Wealthy Exile page.
   function homeCard(snap, cfg, ui) {
     if (cfg.weSync.setup !== 'new' || !snap.paths.clientTxt || snap.logMissing) return '';
-    return `<section class="welcome ws-home"><div><div class="lbl" style="margin-bottom:8px">Optional</div><h2>Connect Wealthy Exile</h2>
-      <p class="muted" style="margin:0 0 6px;font-size:15px">For profit per hour and net worth on Home, Exilogue lets Wealthy Exile sync and export while you play. That needs a small helper in your browser, set up once.</p></div>
-      <div>${html(snap, ui, 'home')}</div></section>`;
+    return `<div class="banner" role="status"><span class="bi">${ic().refresh()}</span>
+      <div class="grow"><div class="bt">Connect Wealthy Exile (optional)</div><div class="sub" style="white-space:normal">Net worth and profit per hour on Home and in the overlay. 3 steps, about 2 minutes.</div></div>
+      <div class="row" style="gap:8px"><button class="btn p" data-nav="page:wealthy">Set up</button><button class="btn q" data-act="ws-later">Later</button></div></div>`;
   }
 
   // Home: an old script (from before Exilogue shipped it) can't update itself, so it gets one nudge.
@@ -97,7 +99,7 @@
     'ws-copy': async () => { if (await ej.weSetupCopy(ui.wsBrowser)) E.toast('Address copied. Paste it in ' + NAMES[ui.wsBrowser] + "'s address bar.", { kind: 'ok' }); },
     'ws-script': async () => { if (!(await ej.weSetupOpen('script'))) E.toastError("Exilogue can't serve the script right now (port 47615 is taken, or the script is missing). Restart Exilogue and try again."); },
     'ws-site': () => ej.weSetupOpen('site'),
-    'ws-later': async () => { await ej.weSetupSkip(); E.toast('You can find these steps in Settings › Launch.'); },
+    'ws-later': async () => { await ej.weSetupSkip(); E.toast('You can set it up any time on the Wealthy Exile page, in the menu on the left.'); },
   });
 
   E.weSetup = { html, statusHtml, homeCard, homeOutdated, actions, NAMES };

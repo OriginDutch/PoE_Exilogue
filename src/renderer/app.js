@@ -39,9 +39,9 @@
   }
 
   // ---------- sidebar ----------
-  const TOOLS = [['poe', 'PE', 'Path of Exile'], ['maps', 'SM', 'Session &amp; Maps'], ['campaign', 'CP', 'Campaign'], ['overlay', 'OV', 'Overlay'], ['filter', 'LF', 'Loot filter'], ['pob', 'PB', 'Path of Building'], ['sheets', 'CS', 'Cheat sheets']];
-  const LINKS = [['wealthy', 'WE', 'Wealthy Exile', 'https://wealthyexile.com'], ['ninja', 'PN', 'poe.ninja', 'https://poe.ninja'], ['trade', 'TR', 'Trade', 'https://www.pathofexile.com/trade']];
-  const SOON = [['fate', 'FL', 'Fate Logger'], ['threads', 'TT', 'Threads Tracker']];
+  const TOOLS = [['poe', 'PE', 'Path of Exile'], ['maps', 'SM', 'Session &amp; Maps'], ['campaign', 'CP', 'Campaign'], ['wealthy', 'WE', 'Wealthy Exile'], ['overlay', 'OV', 'Overlay'], ['filter', 'LF', 'Loot filter'], ['pob', 'PB', 'Path of Building'], ['sheets', 'CS', 'Cheat sheets']];
+  // Links leave the app: they open in your browser, and say so.
+  const LINKS = [['ninja', 'PN', 'poe.ninja', 'https://poe.ninja'], ['trade', 'TR', 'Trade', 'https://www.pathofexile.com/trade']];
 
   function renderSide() {
     const col = state.cfg.ui.sidebarCollapsed;
@@ -58,9 +58,7 @@
       <div class="sec">Tools</div>
       ${TOOLS.map(([id, m, l]) => item('page:' + id, mini(id, m), l, `data-nav="page:${id}"`)).join('')}
       <div class="sec">Links</div>
-      ${LINKS.map(([id, m, l, u]) => item('link:' + id, mini(id, m), l, `data-url="${u}"`)).join('')}
-      <div class="sec">Coming soon</div>
-      ${SOON.map(([id, m, l]) => `<button class="nav soon" disabled title="${col ? l : ''}"><span class="mini" aria-hidden="true">${m}</span><span class="lb">${l}</span></button>`).join('')}
+      ${LINKS.map(([id, m, l, u]) => item('link:' + id, mini(id, m), l + ` <span class="ext-mark" aria-label="(opens in your browser)">${ic.ext()}</span>`, `data-url="${u}"`)).join('')}
       <div class="spacer"></div>
       ${item('settings', `<span class="ic">${ic.settings()}</span>`, 'Settings', 'data-nav="settings"')}
       <button class="nav" data-act="collapse" aria-expanded="${!col}" aria-label="${col ? 'Expand sidebar' : 'Collapse sidebar'}" style="color:var(--tx3)"><span class="ic">${col ? ic.expand() : ic.collapse()}</span><span class="lb">Collapse</span></button>`;

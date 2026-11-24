@@ -148,7 +148,7 @@ class Wealth {
       const exists = this.db.prepare('SELECT id, t, status FROM exports WHERE hash = ?').get(hash);
       if (!exists) {
         const ex = readExport(buf.toString('utf8'));
-        const top = JSON.stringify(ex.items.slice(0, 5));
+        const top = JSON.stringify(ex.items.slice(0, 10)); // the Wealthy Exile page lists 10, the tile 3
         const tabs = JSON.stringify(ex.tabs);
         // No Divine Orb line of your own (you had none): poe.ninja's divine price, else the last one known.
         let div = ex.divPrice;
@@ -217,7 +217,7 @@ class Wealth {
     return {
       count, at: a.t, chaos: a.chaos, divPrice: div, divines: div ? a.chaos / div : null,
       delta: b ? a.chaos - b.chaos : null, prevAt: b ? b.t : null,
-      top: JSON.parse(a.top).slice(0, 3), error: this.lastError ? `${path.basename(this.lastError.file)}: ${this.lastError.msg}` : null,
+      top: JSON.parse(a.top).slice(0, 10), error: this.lastError ? `${path.basename(this.lastError.file)}: ${this.lastError.msg}` : null,
     };
   }
 

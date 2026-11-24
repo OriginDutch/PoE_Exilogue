@@ -322,7 +322,7 @@
     const dTxt = d == null ? '' : `${d >= 0 ? '+' : '−'}${w.divPrice ? num(Math.abs(d) / w.divPrice) + ' div' : num(Math.abs(d), 0) + 'c'}`;
     const delta = d == null ? '' : `<span style="font-weight:600;color:var(${d >= 0 ? "--ok" : "--bad"})">${dTxt}</span><span class="sub"> since previous</span>`;
     const topList = `<div style="display:flex;flex-direction:column;gap:6px;min-width:0"><div class="sub">Top items</div>
-      ${w.top.map(t => `<div class="row between" style="gap:10px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${E.esc(t.name)}${t.qty > 1 ? ` <span class="sub">×${num(t.qty, 0)}</span>` : ''}</span><span class="sub" style="white-space:nowrap">${w.divPrice ? num(t.total / w.divPrice) + ' div' : num(t.total, 0) + 'c'}</span></div>`).join('')}</div>`;
+      ${w.top.slice(0, 3).map(t => `<div class="row between" style="gap:10px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${E.esc(t.name)}${t.qty > 1 ? ` <span class="sub">×${num(t.qty, 0)}</span>` : ''}</span><span class="sub" style="white-space:nowrap">${w.divPrice ? num(t.total / w.divPrice) + ' div' : num(t.total, 0) + 'c'}</span></div>`).join('')}</div>`;
     const main = `<div><div style="font-size:${size === 'xl' ? 40 : 30}px;font-weight:700;line-height:1.1">${val}</div>
         ${size === 's' ? '' : `<div class="sub">${num(w.chaos, 0)} chaos${w.divPrice ? ` · ${num(w.divPrice, 0)}c per div` : ''}</div>`}
         ${size === 's' ? '' : `<div style="margin-top:8px">${delta}</div>`}</div>`;

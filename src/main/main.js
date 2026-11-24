@@ -46,7 +46,7 @@ const DEFAULT_CONFIG = {
     font: 'app',        // app | source | bahnschrift | inter | segoe
     show: { zone: true, map: true, campaign: false, splits: false, session: true },
   },
-  hotkeys: { toggleOverlay: 'Ctrl+Alt+T', unlockOverlay: 'Ctrl+Alt+L', focusDashboard: 'Ctrl+Alt+J', breakTaken: '', essenceOverlay: '' },
+  hotkeys: { toggleOverlay: 'Ctrl+Alt+T', unlockOverlay: 'Ctrl+Alt+L', focusDashboard: 'Ctrl+Alt+J', breakTaken: '', essenceOverlay: '', weSync: '' },
   // Essence upgrade overlay over the essence stash tab, shown with its hotkey (enabled = the hotkey works).
   // display: the id of a screen picked in Settings; null = automatic (from the game's own settings file).
   essences: { enabled: true, display: null },
@@ -119,7 +119,10 @@ function sanitizeConfig() {
   c.goal.label = c.goal.id ? String(c.goal.label || '').slice(0, 80) : '';
   sanitizeSheets(c);
   c.weSync.everyMin = Math.min(180, Math.max(15, Math.round(Number(c.weSync.everyMin) || 30)));
-  // "Connect Wealthy Exile" steps: new = show them on Home once; skipped = later (Settings › Launch); done = connected.
+  // When the userscript last talked to Exilogue, and its version, kept across restarts (the Wealthy Exile page uses it).
+  c.weSync.seenAt = Number.isFinite(c.weSync.seenAt) && c.weSync.seenAt > 0 ? c.weSync.seenAt : null;
+  c.weSync.seenVersion = typeof c.weSync.seenVersion === 'string' && /^(1\.x|\d+(\.\d+){0,3})$/.test(c.weSync.seenVersion) ? c.weSync.seenVersion : null;
+  // "Connect Wealthy Exile" steps: new = show them on Home once; skipped = later (the Wealthy Exile page); done = connected.
   // Set at startup: new for a fresh install, done for one from before these steps (see app ready).
   if (!['new', 'skipped', 'done'].includes(c.weSync.setup)) c.weSync.setup = 'done';
   c.launch.custom = (Array.isArray(c.launch.custom) ? c.launch.custom : []).filter(x => x && typeof x.target === 'string' && x.target.trim()).slice(0, 20)
@@ -128,6 +131,7 @@ function sanitizeConfig() {
   if (!['s', 'm', 'l'].includes(c.overlay.size)) c.overlay.size = 'm';
   c.essences = { enabled: !(c.essences && c.essences.enabled === false), display: c.essences && Number.isFinite(c.essences.display) ? c.essences.display : null };
   if (typeof c.hotkeys.essenceOverlay !== 'string') c.hotkeys.essenceOverlay = '';
+  if (typeof c.hotkeys.weSync !== 'string') c.hotkeys.weSync = '';
   // v0.6 Home is a new layout: an order from the old tile grid is replaced once by the new default.
   if (c.layout.v !== 6) { c.layout.order = ['poe', 'wealthy', 'ninja', 'maps', 'pob', 'campaign', 'filter', 'overlay', 'apt', 'today']; c.layout.v = 6; }
   const order = (c.layout.order || []).filter(id => CARD_IDS.includes(id));
@@ -425,6 +429,7 @@ function snapshot() {
   const ws = wealth ? wealth.summary(leagueStartMs()) : null;
   return {
     now: Date.now(),
+    overlayNote: overlayNoteState && Date.now() < overlayNoteState.until ? overlayNoteState.text : null,
     gameRunning, caughtUp, catchup, logMissing,
     paths: pathsCache || (pathsCache = pathStatus()),
     pathSource: config.data.detected || null,
@@ -438,7 +443,9 @@ function snapshot() {
     stats: tracker ? tracker.snapshot(Date.now()) : null,
     iconsRev: icons ? icons.rev : 0,
     wealth: wealth ? { ...ws, pending: wealth.pendingExport(), fixing: weFixing && !(wealth.latestOkAt() > weFixingAt), history: wealthHistory(), syncAt: wealthSyncAt, syncEvery: WEALTH_SYNC_MS, manualExpiredAt: weManualExpiredAt, failAt: weFailAt, scriptSeenAt: weScriptSeenAt, bgSyncAt: weBgSyncAt, serverError: weServer && weServer.error,
-      scriptVersion: weScriptVersion, scriptShipped: USERSCRIPT_VERSION, scriptOld: !!(weScriptVersion && USERSCRIPT_VERSION && (weScriptVersion === '1.x' || olderVersion(weScriptVersion, USERSCRIPT_VERSION))) } : null,
+      scriptVersion: weScriptVersion, scriptShipped: USERSCRIPT_VERSION,
+      scriptEverAt: Math.max(weScriptSeenAt || 0, config.data.weSync.seenAt || 0) || null,
+      bgNext: weBgNext(), scriptOld: (v => !!(v && USERSCRIPT_VERSION && (v === '1.x' || olderVersion(v, USERSCRIPT_VERSION))))(weScriptVersion || config.data.weSync.seenVersion) } : null,
     divRate: sessionDivRate(),
     breakPrompt,
     goal: goalInfo(),
@@ -459,7 +466,7 @@ const sentKey = new Map(); // webContents id -> data key last sent
 const hiddenWc = new Set(); // windows whose page reports it can't be seen (covered by the game, etc.)
 let lastIdleTick = 0;
 function statusKey() {
-  return JSON.stringify([gen, updateState, breakPrompt && [breakPrompt.shownAt, breakPrompt.revealed], ninja.rev, sheetCache.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [(weManualTick(), wealth.rev), wealth.lastError, wealthSyncAt, weBgSyncAt, weManualExpiredAt, weFailAt, weScriptVersion, Math.floor(weScriptSeenAt / 300000)] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, overlayUnlocked,
+  return JSON.stringify([gen, updateState, overlayNoteState && overlayNoteState.until, breakPrompt && [breakPrompt.shownAt, breakPrompt.revealed], ninja.rev, sheetCache.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [(weManualTick(), wealth.rev), wealth.lastError, wealthSyncAt, weBgSyncAt, weManualExpiredAt, weFailAt, weScriptVersion, Math.floor(weScriptSeenAt / 300000), weBgNext().state] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, overlayUnlocked,
     profileStatus, neversinkLatest, config.data.neversink, pathsCache, leagueDb && leagueDb.corruptFile]);
 }
 function broadcast() {
@@ -550,10 +557,12 @@ function refreshProfileSoon() {
 let weFixing = false, weFixingAt = 0; // dropped an export that looked filtered: Home asks to fix it and export again,
 // until an export that counts comes in after that
 
-function weSyncNow() {
+// noOpen: never open the browser (the hotkey, used in game); without an open tab nothing happens.
+function weSyncNow({ noOpen = false } = {}) {
   const left = wealthSyncAt + WEALTH_SYNC_MS - Date.now();
   // A WE tab is open when the userscript asked recently (v1.8 asks every 10 s; Firefox may slow a background tab down).
   const tabOpen = !weForceTab && weScriptSeenAt && Date.now() - weScriptSeenAt < 60e3;
+  if (noOpen && !tabOpen) return { ok: false, noTab: true };
   if (left > 0) { if (!tabOpen) shell.openExternal(WEALTH_URL); return { ok: false, left, inTab: !!tabOpen }; }
   wealthSyncAt = Date.now();
   weManualAt = wealthSyncAt; // picked up by the userscript via /we-sync (any open WE tab, or the one opened here)
@@ -663,12 +672,24 @@ async function essencePlan(heightPx) {
 }
 
 // ---------- hotkeys ----------
+// A short line in the overlay (a few seconds), for hotkeys that otherwise give no feedback in game.
+let overlayNoteState = null;
+function overlayNote(text, ms = 4000) {
+  overlayNoteState = { text, until: Date.now() + ms };
+  broadcast();
+  setTimeout(() => { if (overlayNoteState && Date.now() >= overlayNoteState.until) { overlayNoteState = null; broadcast(); } }, ms + 50);
+}
 const HOTKEY_ACTIONS = {
   toggleOverlay: () => setOverlayEnabled(!config.data.overlay.enabled),
   unlockOverlay: () => setOverlayLocked(overlayUnlocked),
   focusDashboard: () => { if (dashWin) { if (dashWin.isMinimized()) dashWin.restore(); dashWin.show(); dashWin.focus(); } },
   breakTaken: () => takeBreak(),
   essenceOverlay: () => toggleEssences(),
+  // Like the Sync & export button, but only in an open Wealthy Exile tab: it never opens the browser mid-game.
+  weSync: () => {
+    const r = weSyncNow({ noOpen: true });
+    overlayNote(r.noTab ? 'Open a Wealthy Exile tab to sync' : r.ok ? 'Syncing Wealthy Exile…' : `Synced recently · again in ${Math.ceil(r.left / 60000)} min`);
+  },
 };
 
 function registerHotkeys() {
@@ -882,6 +903,18 @@ function weDecide({ busy } = {}) {
   weBgSyncAt = now;
   return weGo('bg');
 }
+// When the next background sync can happen, by the same rules weDecide uses (for the Wealthy Exile page).
+// { state: 'off' | 'no-game' | 'away' | 'no-tab' | 'at', at }
+function weBgNext() {
+  const b = config.data.weSync;
+  if (!b.background) return { state: 'off' };
+  if (!gameRunning) return { state: 'no-game' };
+  if (!caughtUp) return { state: 'reading' };
+  if (powerMonitor.getSystemIdleTime() >= 60) return { state: 'away' };
+  if (!(weScriptSeenAt && Date.now() - weScriptSeenAt < 60e3)) return { state: 'no-tab' };
+  const last = Math.max(wealthSyncAt, weBgSyncAt, (wealth && wealth.latestAt()) || 0);
+  return { state: 'at', at: last + b.everyMin * 60e3 };
+}
 function weFailed(id) {
   let g = id ? weGos.get(id) : null;
   if (!id) { const last = [...weGos.keys()].pop(); g = last ? weGos.get(last) : null; id = last; } // scripts before v1.8 send no id
@@ -912,7 +945,11 @@ const olderVersion = (a, b) => {
 function startWeSync() {
   weServer = new WeSyncServer({ decide: weDecide, onAsk: (_go, v) => {
     weScriptSeenAt = Date.now(); weScriptVersion = v || '1.x';
-    if (config.data.weSync.setup !== 'done') { config.data.weSync.setup = 'done'; config.saveSoon(); broadcastConfig(); }
+    const ws = config.data.weSync;
+    if (ws.setup !== 'done' || ws.seenVersion !== weScriptVersion || !ws.seenAt || weScriptSeenAt - ws.seenAt > 10 * 60e3) {
+      ws.setup = 'done'; ws.seenAt = weScriptSeenAt; ws.seenVersion = weScriptVersion;
+      config.saveSoon(); broadcastConfig();
+    }
   }, onFailed: weFailed, script: userscriptText });
   weServer.start();
 }
@@ -1699,7 +1736,7 @@ app.whenReady().then(() => {
     setupMigrate = !(raw && raw.weSync && raw.weSync.setup);
   } catch { /* new install (or unreadable config: treated as new) */ }
   config = new JsonStore(cfgFile, DEFAULT_CONFIG);
-  // "Connect Wealthy Exile" on Home: only for a fresh install. Installs from before these steps skip it (Settings › Launch has it).
+  // "Connect Wealthy Exile" on Home: only for a fresh install. Installs from before these steps skip it (the Wealthy Exile page has it).
   if (freshInstall) config.data.weSync.setup = 'new';
   else if (setupMigrate) config.data.weSync.setup = 'done';
   if (soundMigrate) { config.data.breaks.sound = { on: true, volume: 50, file: 'shrine' }; } // Marcel's pick for his own install
