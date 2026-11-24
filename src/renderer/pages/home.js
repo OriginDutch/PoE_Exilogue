@@ -4,8 +4,8 @@
 
   function banners({ snap, cfg }) {
     const corrupt = snap.stateCorrupt ? `<div class="banner warn" role="alert"><span class="bi">${ic.warn()}</span><div class="grow"><div class="bt">Saved stats couldn't be read</div>
-      <div class="sub" style="white-space:normal">The file was kept as ${E.esc(snap.stateCorrupt)} and Exilogue started fresh from Client.txt. Older backups are in Settings › League.</div></div>
-      <button class="btn" data-nav="settings:league">Open backups</button></div>` : '';
+      <div class="sub" style="white-space:normal">The file was kept as ${E.esc(snap.stateCorrupt)} and Exilogue started fresh from Client.txt. Older backups are in Settings › Storage &amp; backups.</div></div>
+      <button class="btn" data-nav="settings:storage">Open backups</button></div>` : '';
     const u = snap.update;
     const upd = u && u.state === 'ready' ? `<div class="banner live" role="status"><span class="bi">${ic.refresh()}</span>
       <div class="grow"><div class="bt">Exilogue ${E.esc(u.next || '')} is ready</div><div class="sub">It installs by itself when you close Exilogue${snap.gameRunning ? '. Restarting is possible once the game is closed.' : ', or restart now.'}</div></div>
@@ -131,7 +131,7 @@
       const t = E.TILES[id], hidden = !!cfg.layout.hidden[id];
       return `<section class="card dn ed${t.wide ? ' wide' : ''}${hidden ? ' hid' : ''}" data-edcard="${id}" draggable="true">
         <div class="ch"><button class="grip" data-grip="${id}" aria-label="Move ${E.esc(t.name)}: drag, or use arrow keys">${ic.grip()}</button>
-          ${E.logo({ id, mono: E.CARDS[id] ? E.CARDS[id].mono : id.slice(0, 2).toUpperCase() })}
+          ${E.logo({ id, mono: E.CARDS[id] ? E.CARDS[id].mono : ({ days: 'MD', fun: 'FS' }[id] || id.slice(0, 2).toUpperCase()) })}
           <div class="t"><span class="ell" style="display:block;font-size:15px;font-weight:600">${E.esc(t.name)}</span><div class="sub">${t.wide ? 'Two columns wide' : 'One column'}${hidden ? ' · hidden' : ''}</div></div>
           <button class="btn i sm" data-act="hide" data-id="${id}" aria-pressed="${hidden}" aria-label="${hidden ? 'Show' : 'Hide'} ${E.esc(t.name)}">${hidden ? ic.eyeOff() : ic.eye()}</button></div>
       </section>`;

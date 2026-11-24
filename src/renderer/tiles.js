@@ -52,7 +52,7 @@
     const lv = st && (st.latestEvents || []).slice().reverse().find(e => e.type === 'level' && ch && e.char === ch.name);
     const info = ch ? `<div style="font-weight:600" class="ell">${clsLine(ch.cls)}</div><div class="sub ell">${run ? `Campaign ${E.fmt(run.activeMs, { hours: true })}${run === st.campaign ? ' (running)' : ''}` : 'Campaign unknown'}${lv ? ' · lvl ' + lv.level + ' ' + E.ago(lv.t) : ''}</div>` : '<div class="sub">Shows up after your first level-up or death</div>';
     const evs = st ? (st.latestEvents || []).slice(-3).reverse().map(e => { const [t] = E.eventLine ? E.eventLine(e) : [e.type]; return `${E.clock(e.t)} ${t}`; }).join(' · ') : '';
-    const play = running ? `<button class="btn" disabled>${ic.check()} Game running</button>` : `<button class="btn p" data-act="play">${ic.play()} Play</button>`;
+    const play = running ? '' : `<button class="btn p" data-act="play">${ic.play()} Play</button>`;
     return `${head('poe', 'Path of Exile', sub, right)}
       <div class="row" style="gap:16px;align-items:flex-start">
         ${ch ? `<div class="lvl"><b>${ch.level}</b></div>` : ''}
@@ -61,11 +61,12 @@
           <div class="sub">${vs != null ? `${vs >= 0 ? '▲' : '▼'} ${num(Math.abs(vs), 2)} vs last session` : r != null ? 'this session' : rate != null ? 'last session' : snap.wealth && snap.wealth.count ? 'needs a 2nd export this session' : 'needs Wealthy Exile exports'}</div></div>
       </div>
       <div class="dgrid3">
-        <div class="dbox"><div class="lbl">Now</div>${now}</div>
+        <div class="dbox"><div class="lbl">${running ? 'Now' : 'Last zone'}</div>${now}</div>
         <div class="dbox"><div class="lbl">${se ? 'This session' : 'Previous session'}</div>${sess}</div>
         <div class="dbox"><div class="lbl">Character</div>${info}</div>
       </div>
-      <div class="row push" style="gap:12px">${play}<span class="grow"></span><span class="sub ell" style="max-width:62%">${esc(evs)}</span></div>`;
+      ${snap.breakPrompt ? `<div class="row push poe-foot brkline"><span class="brk-q">Time for a break?</span><span class="sub ell">${E.hm(snap.breakPrompt.sinceMs)} since your last one</span><span class="grow"></span><button class="btn sm" data-act="brk-taken">I took a break</button></div>`
+        : `<div class="row push poe-foot">${play}${evs ? `<button class="evstrip sub" data-nav="events" title="All events">${esc(evs)} ›</button>` : ''}</div>`}`;
   }
 
   // ---------- Wealthy Exile ----------
@@ -126,8 +127,9 @@
         <div class="sub">${have != null ? `${num(have)} of ${num(g.price)} div` : 'Needs a Wealthy Exile export'}${eta ? ' · ' + eta : ''}</div>`;
     }
     const changes = Object.entries(p.changes || {}).slice(0, 3).map(([n, c]) => kv(esc(n), `${c >= 0 ? '▲' : '▼'} ${num(Math.abs(c), 0)}%`, c >= 0 ? 'ok' : 'bad')).join('');
-    return `${head('ninja', 'poe.ninja', 'Prices · ' + esc(EX.state.cfg.league.name), `<button class="btn i sm" data-url="https://poe.ninja/" aria-label="Open poe.ninja">${ic.ext()}</button>`, false)}
-      <div><div class="row between" style="gap:10px"><span class="lbl row" style="gap:8px;min-width:0;flex:1">${g && g.source === 'ninja' && g.art ? art(g.art, 'item') : ''}${g ? `<button class="goal-btn" data-act="goal-pick" title="${esc(g.name)}${g.label ? ' · ' + esc(g.label) : ''} (click to change)" aria-label="Goal: ${esc(g.name)}${g.label ? ', ' + esc(g.label) : ''}. Change goal">Goal · ${esc(g.name)}${g.label ? ' · ' + esc(g.label) : ''}</button>` : 'Goal'}</span><span class="sub" style="flex:none">${g && g.price ? (g.source === 'ninja' ? (g.approx ? '≈ ' : '') + num(g.price) + ' div' : 'fixed ' + num(g.price) + ' div') : ''}</span></div>${goal}</div>
+    return `${head('ninja', 'Goal &amp; prices', 'poe.ninja · ' + esc(EX.state.cfg.league.name), `<button class="btn i sm" data-url="https://poe.ninja/" aria-label="Open poe.ninja">${ic.ext()}</button>`, false)}
+      <div><div class="row between" style="gap:10px"><span class="lbl">Goal</span><span class="sub" style="flex:none">${g && g.price ? (g.source === 'ninja' ? (g.approx ? '≈ ' : '') + num(g.price) + ' div' : 'fixed ' + num(g.price) + ' div') : ''}</span></div>
+        ${g ? `<button class="goal-btn goal-line" data-act="goal-pick" title="${esc(g.name)}${g.label ? ' (' + esc(g.label) + ')' : ''} · click to change" aria-label="Goal: ${esc(g.name)}${g.label ? ', ' + esc(g.label) : ''}. Change goal">${g.source === 'ninja' && g.art ? art(g.art, 'item') : ''}<span class="goal-name">${esc(g.name)}${g.label ? ' <span class="sub">' + esc(g.label) + '</span>' : ''}</span></button>` : ''}${goal}</div>
       <div class="dlist">${p.divineChaos ? `<div><span class="row" style="gap:6px">${art('cur-divine', 'cur')}Divine Orb</span><b class="row" style="gap:4px">${num(p.divineChaos, 0)}${art('cur-chaos', 'cur')}${E.iconOf('cur-chaos') ? '' : 'c'}</b></div>` : '<div><span>Divine Orb</span><b class="dim">no price yet</b></div>'}</div>
       ${changes ? `<div><div class="lbl" style="margin-bottom:2px">Your items, 24 h</div><div class="dlist">${changes}</div></div>` : ''}`;
   }
@@ -154,15 +156,17 @@
   // ---------- Path of Building ----------
   function pob({ snap }) {
     const b = snap.pobBuild, ok = snap.paths.pobExe;
-    const launch = `<button class="btn i sm" data-act="pob" ${ok ? '' : 'disabled'} aria-label="Launch Path of Building">${ic.play()}</button>`;
-    if (!b) return `${head('pob', 'Path of Building', ok ? 'No builds found' : 'Path not set', launch)}<div class="sub" style="white-space:normal">Looks in Documents\\Path of Building\\Builds. Save a build in PoB and it shows up here.</div>`;
+    const launch = ic.chev();
+    const launchBtn = ok ? `<button class="btn sm" data-act="pob">${ic.play()} Launch PoB</button>` : '<button class="btn q sm" data-nav="settings:paths">Set path</button>';
+    if (!b) return `${head('pob', 'Path of Building', ok ? 'No builds found' : 'Path not set', launch)}<div class="sub" style="white-space:normal">Looks in Documents\\Path of Building\\Builds. Save a build in PoB and it shows up here.</div><div class="row push" style="gap:8px">${launchBtn}</div>`;
     const s = b.stats || {}, dps = s.CombinedDPS || s.FullDPS || s.TotalDPS;
     const res = [['FireResist', '#ec7f6e'], ['ColdResist', '#8fb4f0'], ['LightningResist', '#e2c56f'], ['ChaosResist', '#c3a5f0']].filter(([k]) => s[k] != null);
     const supp = s.EffectiveSpellSuppressionChance ?? s.SpellSuppressionChance;
     return `${head('pob', 'Path of Building', 'Edited ' + E.ago(b.mtime), launch)}
       <div style="min-width:0"><div style="font-weight:600" class="ell">${esc(b.skill ? b.skill + (b.asc || b.cls ? ' ' + (b.asc || b.cls) : '') : b.name)}</div><div class="sub ell">${esc(b.name)}${b.level ? ' · level ' + b.level : ''}</div></div>
       <div class="dlist">${dps != null ? kv('DPS', big(dps)) : ''}${s.Life != null || s.EnergyShield != null ? kv('Life / ES', `${big(s.Life || 0)} / ${big(s.EnergyShield || 0)}`) : ''}${s.Evasion != null || supp != null ? kv('Evasion · Spell supp', `${big(s.Evasion || 0)} · ${supp != null ? Math.round(supp) + '%' : '–'}`) : ''}${s.Armour ? kv('Armour', big(s.Armour)) : ''}</div>
-      ${res.length ? `<div class="res">${res.map(([k, c]) => `<span style="--c:${c}" title="${k.replace('Resist', '')} resistance">${Math.round(s[k])}</span>`).join('')}</div>` : '<div class="sub">Open the build in PoB once to save its stats.</div>'}`;
+      ${res.length ? `<div class="res">${res.map(([k, c]) => `<span style="--c:${c}" title="${k.replace('Resist', '')} resistance"><small>${{ FireResist: 'Fire', ColdResist: 'Cold', LightningResist: 'Lightn.', ChaosResist: 'Chaos' }[k]}</small>${Math.round(s[k])}</span>`).join('')}</div>` : '<div class="sub">Open the build in PoB once to save its stats.</div>'}
+      <div class="row push" style="gap:8px">${launchBtn}</div>`;
   }
 
   // ---------- Campaign ----------
@@ -185,10 +189,12 @@
   function filter({ snap }) {
     const ns = snap.neversink || {}, latest = ns.latest, outdated = latest && ns.lastSyncedTag !== latest.tag;
     const notes = latest && latest.notes ? latest.notes.slice(0, 3) : [];
-    return `${head('filter', 'Loot filter', 'NeverSink · FilterBlade', latest ? `<span class="pill${outdated ? ' acc' : ''}">${esc(latest.tag)}</span>` : '')}
-      <div class="sub">${!latest ? 'Checks GitHub when online.' : ns.lastSyncedTag ? `You synced ${esc(ns.lastSyncedTag)}${ns.syncedAt ? ' · ' + E.ago(ns.syncedAt) : ''}` : 'Not marked as synced yet'}</div>
+    const pillTxt = !latest ? '' : outdated ? '<span class="pill acc">New version</span>' : '<span class="pill">Up to date</span>';
+    return `${head('filter', 'Loot filter', 'NeverSink', pillTxt)}
+      <div style="font-weight:600">${!latest ? 'Checks GitHub when online' : outdated ? `${esc(latest.tag)} is out` : `On ${esc(latest.tag)}`}</div>
+      ${!latest ? '' : `<div class="sub">${!ns.lastSyncedTag ? 'Not marked as synced yet' : outdated ? `You're on ${esc(ns.lastSyncedTag)}${ns.syncedAt ? ', synced ' + E.ago(ns.syncedAt) : ''}` : ns.syncedAt ? 'Synced ' + E.ago(ns.syncedAt) : 'Synced'}</div>`}
       ${notes.length ? `<ul class="dnotes">${notes.map(n => `<li class="ell">${esc(n)}</li>`).join('')}</ul>` : ''}
-      <div class="row push" style="gap:8px"><button class="btn p sm" data-url="https://www.filterblade.xyz">Open FilterBlade</button>${outdated ? '<button class="btn sm" data-act="ns-synced">I\'ve synced</button>' : ''}</div>`;
+      <div class="row push" style="gap:8px"><button class="btn sm" data-url="https://www.filterblade.xyz">Open FilterBlade ${ic.ext()}</button>${outdated ? '<button class="btn sm" data-act="ns-synced">I\'ve synced</button>' : ''}</div>`;
   }
 
   // ---------- Overlay ----------
@@ -203,15 +209,15 @@
   function apt({ snap }) {
     const a = snap.apt, ok = snap.paths.aptExe;
     const right = !ok ? '<span class="pill">Path not set</span>' : pill(a && a.running, 'Running', 'Not running');
-    return `${head('apt', 'Awakened PoE Trade', 'Price check overlay', right, false)}
-      <div class="dlist">${kv('Price check', a && a.key ? esc(a.key) : '<span class="dim">set in APT</span>')}${kv('Started', a && a.running ? (a.launchedAt ? 'by Exilogue, ' + E.ago(a.launchedAt) : 'outside Exilogue') : '–')}</div>
+    return `${head('apt', 'Price check', 'Awakened PoE Trade', right, false)}
+      <div class="dlist">${kv('Check an item', a && a.key ? E.kbd(a.key.replace(/ /g, '')) : '<span class="dim">set in Awakened PoE Trade</span>')}${kv('Started', a && a.running ? (a.launchedAt ? 'by Exilogue, ' + E.ago(a.launchedAt) : 'outside Exilogue') : '–')}</div>
       <div class="row push" style="gap:8px">${ok && !(a && a.running) ? `<button class="btn p sm" data-act="apt">${ic.play()} Launch</button>` : ''}<button class="btn sm" data-url="https://www.pathofexile.com/trade">Trade site ${ic.ext()}</button>${ok ? '' : '<button class="btn q sm" data-nav="settings:paths">Set path</button>'}</div>`;
   }
 
   // ---------- Today ----------
   function today({ snap }) {
     const t = snap.today;
-    const sub = t && t.firstAt ? `since ${E.clock(t.firstAt)} · ${t.sessions} session${t.sessions === 1 ? '' : 's'}` : 'nothing played yet';
+    const sub = t && t.firstAt ? `since ${E.clock(t.firstAt)} · day starts 05:00` : 'nothing played yet';
     if (!t || !t.firstAt) return `${head('today', 'Today', sub, '', false)}<div class="sub">Your day shows up here once you play. A day starts at 05:00.</div>`;
     return `${head('today', 'Today', sub, '', false)}
       <div class="dlist">${kv('Levels', t.levelTo != null && t.levelTo > t.levelFrom ? `${t.levelFrom} → ${t.levelTo}` : '–')}${kv('Maps', t.maps)}${kv('Breaks', E.hm(t.breakMs))}${kv('New tiers', t.newTiers)}${kv('Most run', t.mostRun ? `${zoneName(t.mostRun.zone)} ${tier(t.mostRun.tier)} ×${t.mostRun.runs}` : '–')}${kv('Deadliest', t.deadliest ? `${zoneName(t.deadliest.zone)} · ${t.deadliest.deaths}` : 'no deaths', t.deadliest ? 'bad' : '')}</div>`;
@@ -231,7 +237,7 @@
       return `<div class="pd-col${today ? ' now' : ''}" role="group" aria-label="${esc(label)}">
         <b aria-hidden="true">${d.maps || ''}</b>
         <span class="pd-bar" aria-hidden="true"><i style="height:${Math.round((d.maps / max) * 100)}%"></i></span>
-        <span class="pd-d" aria-hidden="true">D${d.day}</span>
+        <span class="pd-d" aria-hidden="true">${d.date ? `${new Date(d.date).toLocaleDateString('en-GB', { weekday: 'short' })}<br><small>${new Date(d.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</small>` : 'D' + d.day}</span>
         <span class="pd-s" aria-hidden="true">${d.maps ? ms(d.avgMs) : ''}</span>
         <span class="pd-s" aria-hidden="true">${d.maps ? d.deaths + ' †' : ''}</span></div>`;
     }).join('');
@@ -254,13 +260,13 @@
   EX.TILES = {
     poe: { name: 'Path of Exile', wide: true, render: poe },
     wealthy: { name: 'Wealthy Exile', render: wealthy },
-    ninja: { name: 'poe.ninja', render: ninja },
+    ninja: { name: 'Goal & prices', render: ninja },
     maps: { name: 'Session & Maps', wide: true, render: maps },
     pob: { name: 'Path of Building', render: pob },
     campaign: { name: 'Campaign', render: campaign },
     filter: { name: 'Loot filter', render: filter },
     overlay: { name: 'Overlay', render: overlay },
-    apt: { name: 'Awakened PoE Trade', render: apt },
+    apt: { name: 'Price check', render: apt },
     today: { name: 'Today', render: today },
     days: { name: 'Maps per day', wide: true, render: days },
     fun: { name: 'League fact', render: fun },

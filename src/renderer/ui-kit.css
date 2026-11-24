@@ -446,7 +446,7 @@ html.no-motion .view{animation:none}
 .gp-n b{font-weight:600;font-size:14px}
 .gp-p{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
 .gp-st{white-space:normal}
-.goal-btn{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left;letter-spacing:inherit;text-transform:inherit;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.goal-btn{position:relative;z-index:1;background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left;letter-spacing:inherit;text-transform:inherit;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .goal-btn:hover,.goal-btn:focus-visible{color:var(--tx);text-decoration:underline;text-underline-offset:3px}
 
 /* cheat sheets page */
@@ -525,3 +525,22 @@ html.no-motion .view{animation:none}
 /* sidebar links say they open the browser */
 .ext-mark{opacity:.55;display:inline-flex;vertical-align:-1px;margin-left:4px}.ext-mark svg{width:11px;height:11px}
 .ov .ovnote{color:var(--live)}
+
+/* Home tiles (v0.8.3) */
+.poe-foot{height:34px;gap:12px}                   /* same height with Play, with the event line, and with the break question */
+.evstrip{flex:0 1 auto;margin-left:auto;min-width:0;text-align:right;background:none;border:0;padding:0;color:var(--tx3);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative;z-index:1}
+.evstrip:hover{color:var(--tx)}
+.brkline{padding:0 6px 0 10px;border-radius:8px;background:color-mix(in srgb,var(--live) 10%,transparent);border:1px solid color-mix(in srgb,var(--live) 30%,transparent);box-sizing:border-box}
+.brkline .brk-q{color:var(--live);font-weight:600;white-space:nowrap}
+.brkline .btn.sm{height:26px}
+.res span small{display:block;font-size:10px;font-weight:600;letter-spacing:.04em;opacity:.75;text-transform:uppercase}
+.t-paper .res span{color:color-mix(in srgb,var(--c) 60%,#000);background:color-mix(in srgb,var(--c) 22%,transparent)}
+.t-paper .uni{color:#b85e00}
+.goal-line{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;color:var(--tx);text-transform:none;letter-spacing:0;margin:4px 0 6px;max-width:100%}
+.pd-d small{font-size:10px;color:var(--tx3)}
+.setdetails{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
+.setdetails>summary{cursor:pointer;color:var(--tx2);font-size:14px;margin-bottom:10px}
+.hk.hk-none{border-style:dashed}
+
+.goal-line .goal-name{min-width:0;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;line-height:1.25}
+.goal-line.goal-btn{white-space:normal}

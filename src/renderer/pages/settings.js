@@ -1,7 +1,7 @@
 'use strict';
 (function () {
   const E = EX, ic = EX.icon;
-  const TABS = [['appearance', 'Appearance'], ['paths', 'Paths'], ['league', 'League'], ['launch', 'Launch'], ['overlay', 'Overlay'], ['hotkeys', 'Hotkeys'], ['storage', 'Storage']];
+  const TABS = [['appearance', 'Appearance'], ['paths', 'Paths'], ['league', 'League'], ['launch', 'Launch'], ['hotkeys', 'Hotkeys'], ['storage', 'Storage & backups']];
 
   const mock = pal => `<div class="mock t-${pal}" aria-hidden="true"><div class="ms"><i class="a"></i><i></i><i></i><i></i></div><div class="mc"><div class="k poe"><div class="ln" style="width:60%"></div><div class="ln m"></div><div class="bt"></div></div><div class="k"><div class="dot"></div><div class="ln m"></div><div class="ln" style="width:50%"></div></div></div></div>`;
   const opt = (name, value, label, checked) => `<label class="opt"><input type="radio" name="${name}" value="${value}" data-pal="${name}" ${checked ? 'checked' : ''}>${mock(value)}<div class="nm">${label}<span class="on">${ic.check(12)}</span></div></label>`;
@@ -23,10 +23,9 @@
     const fonts = [['source', 'Source Sans 3', "'Source Sans 3', sans-serif"], ['bahnschrift', 'Bahnschrift', "Bahnschrift, Barlow, sans-serif"], ['inter', 'Inter', 'Inter, sans-serif'], ['segoe', 'Segoe UI', "'Segoe UI Variable', 'Segoe UI', sans-serif"]];
     return (snap ? updatesRow(snap) : '') + `<section class="setrow"><div><h2>Theme</h2><p>System follows Windows. Right now Windows is set to ${cfg.systemDark ? 'dark' : 'light'}.</p></div>
         <div role="radiogroup" aria-label="Theme" class="seg" style="align-self:start">${[['system', 'System'], ['dark', 'Dark'], ['light', 'Light']].map(([v, l]) => `<label><input type="radio" name="mode" value="${v}" data-theme ${u.theme === v ? 'checked' : ''}>${l}</label>`).join('')}</div></section>
-      <section class="setrow"><div><h2>Dark palette</h2><p>Used in dark mode, and in System mode when Windows is dark.</p></div>
+      <section class="setrow"><div><h2>Dark palette</h2><p>Used in dark mode, and in System mode when Windows is dark. Light mode uses Cool Paper.</p></div>
         <div class="opts" role="radiogroup" aria-label="Dark palette">${opt('darkPalette', 'night', 'Umbra Night', u.darkPalette === 'night')}${opt('darkPalette', 'spectral', 'Spectral Teal', u.darkPalette === 'spectral')}${opt('darkPalette', 'silver', 'Silver &amp; Ink', u.darkPalette === 'silver')}</div></section>
-      <section class="setrow"><div><h2>Light palette</h2><p>Used in light mode, and in System mode when Windows is light.</p></div>
-        <div class="opts" role="radiogroup" aria-label="Light palette">${opt('lightPalette', 'paper', 'Cool Paper', true)}</div></section>
+
       <section class="setrow"><div><h2>Font</h2><p>Applies to the whole app. Numbers always use tabular figures. Bahnschrift comes with Windows.</p></div>
         <div class="fonts" role="radiogroup" aria-label="Font">${fonts.map(([v, l, ff]) => `<label class="fopt"><input type="radio" name="font" value="${v}" data-font ${u.font === v ? 'checked' : ''}><span class="fn">${l}</span><span class="smp" style="font-family:${ff}">TerribleLizard · 2:20 · 8.21.0</span></label>`).join('')}</div></section>
       <section class="setrow" style="border-bottom:0"><div><h2>Smooth transitions</h2><p>Short, equal-length transitions between screens and states. Turn off for instant changes.</p></div>
@@ -58,12 +57,11 @@
   }
 
   function league(cfg, ui, snap) {
-    const backups = ui.backups || [];
     return `<section class="setrow"><div><h2>League</h2><p>Name and start of the league you are tracking. Anything in Client.txt before the start is ignored.</p></div>
         <div style="display:flex;flex-direction:column;gap:14px">
           <div class="field"><label class="lbl" for="lg-name">League name</label><input id="lg-name" class="input" data-path="league.name" value="${E.esc(cfg.league.name)}"></div>
           <div class="field"><label class="lbl" for="lg-start">Start (local time)</label><input id="lg-start" class="input" data-path="league.start" value="${E.esc(cfg.league.start.slice(0, 16))}" placeholder="YYYY/MM/DD HH:MM">
-            <span class="sub">Format YYYY/MM/DD HH:MM. Changing it rebuilds league stats (a backup is kept).</span></div>
+            <span class="sub">YYYY/MM/DD HH:MM, your local time (24-hour). Changing it rebuilds league stats (a backup is kept).</span></div>
           <div class="field"><label class="lbl" for="lg-acc">Account name</label>
             <div class="row" style="gap:8px"><input id="lg-acc" class="input" data-path="account" value="${E.esc(cfg.account)}" placeholder="Name#1234"><button class="btn" data-act="profile-check">${ic.refresh()} Check now</button></div>
             ${profileLine(snap.profileStatus)}</div></div></section>
@@ -75,12 +73,7 @@
             <span class="sub">Search any unique; variants, 6-links and relics each have their own price.</span></div>
           <div class="field"><label class="lbl" for="gl-div">Fixed price in divines (fallback)</label><input id="gl-div" class="input" data-path="goal.divines" inputmode="decimal" value="${cfg.goal.divines != null ? cfg.goal.divines : ''}" placeholder="Only used when poe.ninja has no price">
             ${snap.goal ? `<span class="sub">${snap.goal.source === 'ninja' ? `poe.ninja: ${snap.goal.price} div` : snap.goal.source === 'fixed' ? 'Using your fixed price (no poe.ninja price found yet)' : 'No price yet'}</span>` : ''}</div></div></section>
-      <section class="setrow"><div><h2>Rebuild league data</h2><p>Reads Client.txt again from the league start. Your current stats are kept as a backup first.</p></div>
-        <div><button class="btn dout" data-act="rebuild">${ic.refresh()} Rebuild league data</button></div></section>
-      <section class="setrow" style="border-bottom:0"><div><h2>Backups</h2><p>Made automatically before every rebuild, path change or restore. Restoring also backs up what you have now.</p></div>
-        <div>${backups.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Made</th><th class="r">Size</th><th></th></tr></thead><tbody>
-          ${backups.slice(0, 10).map(b => `<tr><td>${E.date(b.at)}</td><td class="r">${Math.max(1, Math.round(b.size / 1024))} KB</td><td class="r"><button class="btn sm" data-restore="${E.esc(b.file)}">Restore</button></td></tr>`).join('')}
-          </tbody></table></div>` : '<div class="empty"><b>No backups yet</b><span>One is made the first time you rebuild or change the log path.</span></div>'}</div></section>`;
+`;
   }
 
   function launch(cfg, snap, ui) {
@@ -106,12 +99,12 @@
     const row = (key, title, desc) => {
       const acc = cfg.hotkeys[key], rec = ui.recording === key, err = msg[st[key]];
       const cap = rec ? `<button class="hk rec" data-hk="${key}" aria-label="Recording ${title}. Press a combination, Escape cancels."><span class="dotrec" aria-hidden="true"></span>Press a combination…</button>`
-        : `<button class="hk${err ? ' err' : ''}" data-hk="${key}" aria-label="${title}: ${acc || 'none'}. Click to record a new combination.">${acc ? acc.split('+').map(k => `<span class="kbd">${E.esc(k)}</span>`).join('<span class="plus" aria-hidden="true">+</span>') : '<span class="sub">None</span>'}</button>`;
+        : `<button class="hk${err ? ' err' : ''}${acc ? '' : ' hk-none'}" data-hk="${key}" aria-label="${title}: ${acc || 'none'}. Click to record a new combination.">${acc ? acc.split('+').map(k => `<span class="kbd">${E.esc(k)}</span>`).join('<span class="plus" aria-hidden="true">+</span>') : '<span class="sub">+ Click to set a key</span>'}</button>`;
       return `<section class="setrow"><div><h2>${title}</h2><p>${desc}</p></div>
-        <div style="display:flex;flex-direction:column;gap:8px"><div class="hkrow">${cap}<button class="btn q" data-hkclear="${key}" ${acc ? '' : 'disabled'}>Clear</button></div>
+        <div style="display:flex;flex-direction:column;gap:8px"><div class="hkrow">${cap}${acc ? `<button class="btn q" data-hkclear="${key}">Clear</button>` : ''}</div>
         ${err ? `<div class="st no" style="white-space:normal">${ic.warn()} ${err}</div>` : ''}</div></section>`;
     };
-    return row('toggleOverlay', 'Toggle overlay', 'Show or hide the in-game overlay.') +
+    return row('toggleOverlay', 'Show / hide overlay', 'Show or hide the in-game overlay.') +
       row('unlockOverlay', 'Unlock overlay', 'Unlock to drag and resize the overlay; press again to lock.') +
       row('focusDashboard', 'Focus Exilogue', 'Bring this window to the front.') +
       row('breakTaken', 'I took a break', 'Answers "Take a break?" with yes, or marks a break you took yourself.') +
@@ -122,15 +115,40 @@
 
   function storage(ui) {
     const d = ui.storage;
-    if (!d) return '<div class="empty" style="margin-top:20px"><b>Reading disk usage…</b></div>';
-    const io = d.io, f = d.files, B = E.bytes;
-    const written = io.dbWritten + io.backupWritten + io.configWritten + (io.iconWritten || 0) + (io.wealthWritten || 0);
-    const read = io.logRead + io.otherRead;
+    const ready = d && !d.failed && d.io && d.files;
+    const io = ready ? d.io : {}, f = ready ? d.files : {}, B = E.bytes;
+    const written = ready ? io.dbWritten + io.backupWritten + io.configWritten + (io.iconWritten || 0) + (io.wealthWritten || 0) : 0;
+    const read = ready ? io.logRead + io.otherRead : 0;
     const days = io.since ? Math.max(1, (Date.now() - io.since) / 86400000) : null;
     const rows = list => list.map(([l, v, sub]) => `<tr><td>${l}${sub ? `<div class="sub">${sub}</div>` : ''}</td><td class="r">${B(v)}</td></tr>`).join('');
     const table = (list, total) => `<div class="tblwrap"><table class="tbl"><tbody>${rows(list)}</tbody>
       ${total != null ? `<tfoot><tr><td style="font-weight:600">Total</td><td class="r" style="font-weight:600">${B(total)}</td></tr></tfoot>` : ''}</table></div>`;
-    return `<section class="setrow"><div><h2>Written to disk</h2><p>Everything Exilogue itself wrote, counted to the byte, since ${io.since ? E.date(io.since) : 'this version was installed'}.${days ? ` That's about ${B(written / days)} per day.` : ''}</p></div>
+    const backups = ui.backups || [], backupsLoading = ui.backups == null;
+    const diskBtns = `<span class="row" style="gap:8px"><button class="btn sm" data-act="storage-open">${ic.folder()} Open folder</button><button class="btn sm" data-act="storage-refresh">${ic.refresh()} Refresh</button></span>`;
+    const disk = ready ? `<section class="setrow"><div><h2>Disk space</h2><p>Size of everything in Exilogue's folder right now.</p></div>
+        <div style="display:flex;flex-direction:column;gap:12px">${table([
+          ['League database', f.database],
+          ['Backups', f.backups, `${f.backupCount} file${f.backupCount === 1 ? '' : 's'} · the newest ${f.keepBackups} are kept`],
+          ['Settings', f.config],
+          ['Tool icons', f.icons || 0],
+          ['Wealth exports', f.wealth || 0, 'The newest 2 CSV files and the totals of all of them'],
+          ...(f.other ? [['Old and set-aside files', f.other, 'state.json from v0.3, unreadable files kept for safety']] : []),
+          ['Electron engine', f.engine, 'Caches of the engine Exilogue runs on'],
+        ], f.total)}
+          <div class="note">${ic.info()}<span>The Electron engine also writes its caches here. Windows can only report its disk writes mixed with network and internal traffic, so that part is shown as size, not as writes.</span></div>
+          <div class="row between"><span class="sub">Client.txt itself (written by the game): ${B(d.clientTxt)}</span><span class="row" style="gap:8px"><button class="btn sm" data-act="storage-open">${ic.folder()} Open folder</button><button class="btn sm" data-act="storage-refresh">${ic.refresh()} Refresh</button></span></div>
+        </div></section>
+`
+      : `<section class="setrow"><div><h2>Disk space</h2><p>Size of everything in Exilogue's folder right now.</p></div>
+        <div style="display:flex;flex-direction:column;gap:12px"><div class="sub">${d && d.failed ? 'Could not read the disk usage.' : 'Reading disk usage…'}</div><div class="row push">${diskBtns}</div></div></section>`;
+    return disk + `      <section class="setrow"><div><h2>Rebuild league data</h2><p>Reads Client.txt again from the league start. Your current stats are kept as a backup first.</p></div>
+        <div><button class="btn dout" data-act="rebuild">${ic.refresh()} Rebuild league data</button></div></section>
+      <section class="setrow" style="border-bottom:0"><div><h2>Backups</h2><p>Made automatically before every rebuild, path change or restore. Restoring also backs up what you have now.</p></div>
+        <div>${backups.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Made</th><th class="r">Size</th><th></th></tr></thead><tbody>
+          ${backups.slice(0, 10).map(b => `<tr><td>${E.date(b.at)}</td><td class="r">${Math.max(1, Math.round(b.size / 1024))} KB</td><td class="r"><button class="btn sm" data-restore="${E.esc(b.file)}">Restore</button></td></tr>`).join('')}
+          </tbody></table></div>` : backupsLoading ? '<div class="sub">Loading backups…</div>' : '<div class="empty"><b>No backups yet</b><span>One is made the first time you rebuild or change the log path.</span></div>'}</div></section>
+` + (ready ? `      <details class="setdetails"><summary>Disk writes and reads (for the curious)</summary>
+      <section class="setrow"><div><h2>Written to disk</h2><p>Everything Exilogue itself wrote, counted to the byte, since ${io.since ? E.date(io.since) : 'this version was installed'}.${days ? ` That's about ${B(written / days)} per day.` : ''}</p></div>
         <div>${table([
           ['League database', io.dbWritten, 'Stats, events and maps. Saved at most every 30 seconds, only what changed.'],
           ['Backups', io.backupWritten, 'Made before a rebuild, a path or start change, or a restore.'],
@@ -143,19 +161,7 @@
           ['Client.txt', io.logRead, 'The game log'],
           ['Backups and old saves', io.otherRead, 'Restores and the one-time move from v0.3'],
         ], read)}</div></section>
-      <section class="setrow"><div><h2>Disk space</h2><p>Size of everything in Exilogue's folder right now.</p></div>
-        <div style="display:flex;flex-direction:column;gap:12px">${table([
-          ['League database', f.database],
-          ['Backups', f.backups, `${f.backupCount} file${f.backupCount === 1 ? '' : 's'} · the newest ${f.keepBackups} are kept`],
-          ['Settings', f.config],
-          ['Tool icons', f.icons || 0],
-          ['Wealth exports', f.wealth || 0, 'The newest 2 CSV files and the totals of all of them'],
-          ...(f.other ? [['Old and set-aside files', f.other, 'state.json from v0.3, unreadable files kept for safety']] : []),
-          ['Electron engine', f.engine, 'Caches of the engine Exilogue runs on'],
-        ], f.total)}
-          <div class="note">${ic.info()}<span>The Electron engine also writes its caches here. Windows can only report its disk writes mixed with network and internal traffic, so that part is shown as size, not as writes.</span></div>
-          <div class="row between"><span class="sub">Client.txt itself (written by the game): ${B(d.clientTxt)}</span><button class="btn sm" data-act="storage-refresh">${ic.refresh()} Refresh</button></div>
-        </div></section>`;
+</details>` : '');
   }
 
   EX.pages = EX.pages || {};
@@ -165,7 +171,7 @@
       const tab = ui.settingsTab || 'appearance';
       const body = tab === 'appearance' ? appearance(cfg, snap) : tab === 'paths' ? paths(cfg, snap) : tab === 'league' ? league(cfg, ui, snap)
         : tab === 'storage' ? storage(ui) : tab === 'launch' ? launch(cfg, snap, ui)
-        : tab === 'overlay' ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:20px">${EX.overlayControls(cfg, snap)}</div>` : hotkeys(cfg, snap, ui);
+        : tab === 'overlay' ? `<div class="note" style="margin-top:20px">${ic.info()}<span>Overlay settings are on the Overlay page. <button class="lnk" data-nav="page:overlay">Open Overlay</button></span></div>` : hotkeys(cfg, snap, ui);
       return `<div style="max-width:1000px"><div class="head" style="margin-bottom:16px"><h1 class="h">Settings</h1></div>
         <div class="tabs" role="tablist" aria-label="Settings sections">${TABS.map(([k, l]) => `<button role="tab" aria-selected="${tab === k}" data-tab="${k}">${l}</button>`).join('')}</div>
         <div role="tabpanel">${body}</div></div>`;

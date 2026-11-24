@@ -634,7 +634,7 @@ function essenceDisplay() {
   if (picked) return { display: picked, note: null };
   const g = gameDisplay();
   if (g) return { display: g.display, note: null };
-  return { display: screen.getPrimaryDisplay(), note: all.length > 1 ? 'Game screen not found: main screen. Pick one in Settings › Overlay' : null };
+  return { display: screen.getPrimaryDisplay(), note: all.length > 1 ? 'Game screen not found: main screen. Pick one on the Overlay page' : null };
 }
 
 // Counts older than 15 minutes: ask for a new export first, but only through an open Wealthy Exile tab (the
@@ -1578,6 +1578,7 @@ function setupIpc() {
   ipcMain.handle('snapshot', e => { sentKey.set(e.sender.id, statusKey()); return snapshot(); });
   ipcMain.on('win:visible', (e, visible) => { if (visible) hiddenWc.delete(e.sender.id); else hiddenWc.add(e.sender.id); });
   ipcMain.handle('storage:get', () => storageInfo());
+  ipcMain.handle('storage:open', async () => { const err = await shell.openPath(app.getPath('userData')); return err ? { ok: false, error: err } : { ok: true }; });
   ipcMain.handle('break:taken', () => { takeBreak(); return true; });
   ipcMain.handle('update:install', async () => {
     if (!autoUpdater || updateState.state !== 'ready') return { ok: false, error: 'No update ready' };

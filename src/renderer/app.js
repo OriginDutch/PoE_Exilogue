@@ -133,8 +133,15 @@
 
   // Data a settings tab needs before it can draw.
   async function loadTab() {
-    if (ui.settingsTab === 'league') ui.backups = await ej.listBackups();
-    if (ui.settingsTab === 'storage') ui.storage = await ej.storage();
+    if (ui.settingsTab !== 'storage') return;
+    await Promise.all([
+      ej.listBackups().then(b => { ui.backups = b; }).catch(() => { ui.backups = []; }),
+      ej.storage().then(d => { ui.storage = d; }).catch(() => { ui.storage = { failed: true }; }),
+    ]);
+  }
+  // Draw the tab right away and fill it in when its data is there (the disk walk can take a moment).
+  function refreshTab() {
+    loadTab().then(() => { if (ui.view === 'settings') render(true); });
   }
 
   async function go(target) {
@@ -142,7 +149,7 @@
       const tab = target.split(':')[1];
       if (tab) ui.settingsTab = tab;
       ui.view = 'settings';
-      await loadTab();
+      refreshTab();
     } else {
       ui.view = target;
     }
@@ -230,13 +237,14 @@
       E.toast(r.ok ? (r.inTab ? 'Syncing in your open Wealthy Exile tab…' : 'Wealthy Exile opened, syncing…') : `Synced recently. Next sync in ${Math.ceil(r.left / 60000)} min${r.inTab ? '' : '; opened Wealthy Exile'}.`);
       state.snap = await ej.snapshot(); render(true);
     },
-    'storage-refresh': async () => { ui.storage = await ej.storage(); render(true); },
+    'storage-refresh': () => refreshTab(),
+    'storage-open': async () => { const r = await ej.openDataFolder(); if (r && r.ok === false) E.toastError(`Could not open the folder: ${r.error}`); },
     'events-more': async () => { await loadEvents('more'); render(true); },
     rebuild: async () => {
       if (await E.confirm({ title: 'Rebuild league data?', body: 'Exilogue reads Client.txt again from the league start. A backup of your current stats is kept, so you can go back in Backups below.', ok: 'Rebuild', danger: true })) {
         const r = await ej.resetLeague();
         if (r && r.ok === false) E.toastError(r.error);
-        state.snap = await ej.snapshot(); ui.events = null; ui.backups = await ej.listBackups(); render(true);
+        state.snap = await ej.snapshot(); ui.events = null; await loadTab(); render(true);
       }
     },
   };
@@ -256,7 +264,7 @@
     const lr = t.closest('[data-lremove]');
     if (lr) return save({ launch: { custom: state.cfg.launch.custom.filter(c => c.id !== lr.dataset.lremove) } });
     const tab = t.closest('[data-tab]');
-    if (tab) { ui.settingsTab = tab.dataset.tab; await loadTab(); render(true); return; }
+    if (tab) { ui.settingsTab = tab.dataset.tab; render(true); refreshTab(); return; }
     const br = t.closest('[data-browse]');
     if (br) {
       const key = br.dataset.browse;
@@ -274,14 +282,14 @@
         const r = await ej.restoreBackup(rs.dataset.restore);
         if (!r.ok) E.toastError(r.error);
         state.cfg = await ej.getConfig(); // a backup for another log brings its path and start along
-        state.snap = await ej.snapshot(); ui.events = null; ui.backups = await ej.listBackups(); render(true);
+        state.snap = await ej.snapshot(); ui.events = null; await loadTab(); render(true);
       }
       return;
     }
     const hk = t.closest('[data-hk]');
     if (hk) { ui.recording = hk.dataset.hk; ej.pauseHotkeys(true); render(true); return; }
     const hc = t.closest('[data-hkclear]');
-    if (hc) { save({ hotkeys: { [hc.dataset.hkclear]: '' } }); return; }
+    if (hc) { const k = hc.dataset.hkclear; await save({ hotkeys: { [k]: '' } }); main.querySelector(`[data-hk="${k}"]`)?.focus(); return; }
     const ef = t.closest('[data-evfilter]');
     if (ef) { ui.eventsFilter = ef.dataset.evfilter; await loadEvents(); render(true); }
   });

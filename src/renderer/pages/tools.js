@@ -208,7 +208,7 @@
     const snd = b.sound || { on: false, volume: 50 };
     const fonts = [['app', 'Same as app'], ['source', 'Source Sans 3'], ['bahnschrift', 'Bahnschrift'], ['inter', 'Inter'], ['segoe', 'Segoe UI']];
     return `<section class="box"><div class="bh"><h2>Overlay</h2>${E.sw(o.enabled, 'Show overlay', 'ov-toggle')}</div>
-        <div class="row between"><span class="muted">Toggle overlay</span>${E.kbd(cfg.hotkeys.toggleOverlay)}</div>
+        <div class="row between"><span class="muted">Show / hide overlay</span>${E.kbd(cfg.hotkeys.toggleOverlay)}</div>
         <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" data-act="ov-unlock">${snap.overlayUnlocked ? ic.lock() + ' Lock' : ic.unlock() + ' Unlock to move'}</button>${E.kbd(cfg.hotkeys.unlockOverlay)}
           <button class="btn q" data-act="ov-reset">${ic.refresh()} Reset position</button></div>
         ${E.note('Unlocked, you can drag the overlay and pull its corners to change the width. Lock it again to click through it. Needs windowed fullscreen.')}</section>
