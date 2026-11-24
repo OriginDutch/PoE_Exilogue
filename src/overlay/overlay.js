@@ -30,7 +30,7 @@
       }
     }
     const extra = unlocked
-      ? `<div class="bar"><span>Drag to move · corners resize</span><button data-lock>${ic.lock()} Lock</button></div>
+      ? `<div class="ovbar"><span>Drag to move · corners resize</span><button data-lock>${ic.lock()} Lock</button></div>
          <span class="hdl hl ht" data-h="l" aria-hidden="true"></span><span class="hdl hr2 ht" data-h="r" aria-hidden="true"></span>
          <span class="hdl hl hb" data-h="l" aria-hidden="true"></span><span class="hdl hr2 hb" data-h="r" aria-hidden="true"></span>`
       : '';

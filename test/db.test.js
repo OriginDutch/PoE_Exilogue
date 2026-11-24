@@ -193,3 +193,16 @@ test('db: deaths in maps per hour of the day (campaign deaths and older ones lef
   assert.equal(h.reduce((a, b) => a + b, 0), 4);
   db.close();
 });
+
+test('db: an empty tracker is not content worth keeping; events are', () => {
+  const db = new LeagueDb(tmp());
+  const empty = new Tracker(freshState());
+  db.commit({ tracker: empty.s, meta: { offset: 0, file: 'C:/x/Client.txt' }, pending: empty.takePending() });
+  assert.strictEqual(db.hasData(), true);     // keys were written
+  assert.strictEqual(db.hasContent(), false); // but nothing to back up or keep
+  const tr = new Tracker(freshState());
+  play(tr, SESSION);
+  db.commit({ tracker: tr.s, meta: { offset: 99, file: 'C:/x/Client.txt' }, pending: tr.takePending() });
+  assert.strictEqual(db.hasContent(), true);
+  db.close();
+});

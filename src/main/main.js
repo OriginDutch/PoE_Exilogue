@@ -4,6 +4,7 @@ const { defaultBrowser, TAMPERMONKEY } = require('./browser');
 const path = require('path');
 const fs = require('fs');
 const { execFile, spawn } = require('child_process');
+const { detectPaths, logNextTo, parseRegValue } = require('./detect');
 
 const { JsonStore, deepMerge } = require('./store');
 const { LeagueDb, checkFile } = require('./db');
@@ -369,6 +370,50 @@ function pathStatus() {
 // Checked on start, on config changes and when the dashboard gets focus; not every second.
 function refreshPaths() { pathsCache = pathStatus(); }
 
+// Looks for the game and the tools on this PC (detect.js) and fills in only paths that don't work now.
+// The log is only filled in during the first start; afterwards a new log means rebuilding league stats, so it is
+// offered (suggestLog) and the renderer asks first, like Browse does.
+const winIo = {
+  exists: f => { try { return fs.existsSync(f); } catch { return false; } },
+  read: f => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } },
+  list: d => { try { return fs.readdirSync(d); } catch { return []; } },
+  reg: (key, value) => new Promise(resolve => {
+    if (process.platform !== 'win32') return resolve(null);
+    execFile('reg', ['query', key, '/v', value], { windowsHide: true, timeout: 3000 }, (err, out) => resolve(err ? null : parseRegValue(out, value)));
+  }),
+  env: process.env,
+};
+let detecting = null;
+function autoDetectPaths() {
+  if (detecting) return detecting;
+  detecting = (async () => {
+    const f = await detectPaths(winIo), P = config.data.paths, ok = x => !!x && fs.existsSync(x);
+    const firstStart = !config.data.ui.welcomeDone;
+    const changed = {};
+    for (const k of ['poeExe', 'pobExe', 'aptExe']) if (f[k] && !ok(P[k])) changed[k] = f[k];
+    let suggestLog = null;
+    if (f.clientTxt && !ok(P.clientTxt) && f.clientTxt !== P.clientTxt) {
+      if (firstStart) changed.clientTxt = f.clientTxt; // may not exist yet: the watcher waits for it
+      else if (!f.logMissing) suggestLog = f.clientTxt;
+    }
+    // Where the game was found: only when that's the game Exilogue uses now.
+    if (f.source.poe && (changed.poeExe || f.poeExe === P.poeExe)) config.data.detected = { poe: f.source.poe };
+    if (Object.keys(changed).length) {
+      const logChanged = !!changed.clientTxt, before = { clientTxt: P.clientTxt };
+      Object.assign(P, changed);
+      refreshPaths();
+      if (logChanged && tracker) {
+        try { resetState(); } catch (e) { P.clientTxt = before.clientTxt; refreshPaths(); throw e; } // first start: usually nothing to keep
+      }
+      if (iconRefresh) iconRefresh();
+    }
+    config.save();
+    broadcastConfig();
+    return { found: Object.keys(f).filter(k => k !== 'source' && k !== 'logMissing'), changed: Object.keys(changed), suggestLog, logMissing: !!f.logMissing };
+  })().finally(() => { detecting = null; });
+  return detecting;
+}
+
 // For Settings: which screen "Automatic" picks right now (checked at most once a minute).
 let gameDispAt = 0, gameDispId = null;
 function gameDisplayCached() {
@@ -382,6 +427,7 @@ function snapshot() {
     now: Date.now(),
     gameRunning, caughtUp, catchup, logMissing,
     paths: pathsCache || (pathsCache = pathStatus()),
+    pathSource: config.data.detected || null,
     neversink: { latest: neversinkLatest, ...config.data.neversink },
     hotkeys: hotkeyStatus,
     overlayUnlocked,
@@ -1379,7 +1425,8 @@ function backupState({ prune = true } = {}) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     leagueDb.backupTo(path.join(backupDir(), `league.backup-${stamp}.db`));
     if (prune) pruneBackups();
-  } catch (e) { console.error('Backup failed:', e.message); } // best effort
+    return true;
+  } catch (e) { console.error('Backup failed:', e.message); return false; }
 }
 
 // Keep the newest KEEP_BACKUPS database backups. Old state.backup-*.json files (v0.3) are left alone.
@@ -1389,8 +1436,9 @@ function pruneBackups() {
 }
 
 // Rebuild from the log, but keep a backup first: if Client.txt was cleared mid-league the old stats are irreplaceable.
+// Never clears league stats it couldn't back up first.
 function resetState() {
-  backupState();
+  if (leagueDb.hasContent() && !backupState()) throw new Error("Couldn't back up your league stats, so nothing was changed.");
   if (watcher) watcher.stop();
   tracker = null;
   leagueDb.clear();
@@ -1465,6 +1513,11 @@ function setupIpc() {
       patch.league.start = norm;
     }
     if (patch._replaceLayout) { config.data.layout = { order: [], sizes: {}, hidden: {} }; delete patch._replaceLayout; }
+    // First start: picking the game also sets its log (it may not exist until the game has run once).
+    if (patch.paths && patch.paths.poeExe && !patch.paths.clientTxt && !config.data.ui.welcomeDone && !fs.existsSync(config.data.paths.clientTxt || '')) {
+      patch.paths.clientTxt = logNextTo(patch.paths.poeExe);
+    }
+    if (patch.paths && patch.paths.poeExe && patch.paths.poeExe !== config.data.paths.poeExe) config.data.detected = null;
     deepMerge(config.data, patch);
     sanitizeConfig();
     if (patch.sheets) { setImmediate(() => sheetTick()); applySheetPin(); }
@@ -1473,12 +1526,18 @@ function setupIpc() {
     if (patch.overlay && 'enabled' in patch.overlay) setOverlayEnabled(config.data.overlay.enabled);
     if (patch.essences && !config.data.essences.enabled) hideEssences();
     // Stats are wiped before the new path/start is saved: a crash in between leaves old stats with the old config.
-    if (JSON.stringify([config.data.paths.clientTxt, config.data.league.start]) !== before) resetState();
+    if (JSON.stringify([config.data.paths.clientTxt, config.data.league.start]) !== before) {
+      try { resetState(); } catch (e) {
+        [config.data.paths.clientTxt, config.data.league.start] = JSON.parse(before); refreshPaths();
+        return { ...effectiveConfig(), _error: e.message };
+      }
+    }
     config.save();
     if (patch.account !== undefined) checkProfile();
     broadcastConfig();
     return effectiveConfig();
   });
+  ipcMain.handle('paths:detect', () => autoDetectPaths());
   ipcMain.handle('snapshot', e => { sentKey.set(e.sender.id, statusKey()); return snapshot(); });
   ipcMain.on('win:visible', (e, visible) => { if (visible) hiddenWc.delete(e.sender.id); else hiddenWc.add(e.sender.id); });
   ipcMain.handle('storage:get', () => storageInfo());
@@ -1648,6 +1707,11 @@ app.whenReady().then(() => {
   if (soundMigrate || freshInstall || setupMigrate) config.save();
   seedSheets();
   leagueDb = new LeagueDb(path.join(dir, 'league.db'));
+  // Installs that already have league stats (or a working log from before the setup card) never get the setup card.
+  if (!config.data.ui.welcomeDone && (leagueDb.hasContent() || (!freshInstall && config.data.paths.clientTxt && fs.existsSync(config.data.paths.clientTxt)))) { config.data.ui.welcomeDone = true; config.save(); }
+  // First start: look for the game and tools in the background (registry reads are async; the window doesn't wait).
+  // If tracking hasn't started yet when it's done, startTracking simply reads the new path.
+  if (!config.data.ui.welcomeDone) setTimeout(() => autoDetectPaths().catch(e => console.error('Path detection failed:', e.message)), 0);
   if (!config.data.io.since) { config.data.io.since = Date.now(); config.save(); }
   const legacy = path.join(dir, 'state.json');
   if (fs.existsSync(legacy) && !leagueDb.hasData()) {

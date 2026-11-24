@@ -38,7 +38,10 @@
       <div class="field"><div class="row between"><label class="lbl" for="p-${key}">${title}</label>${E.pathSt(snap.paths[key])}</div>
         <div class="row" style="gap:8px"><input id="p-${key}" class="input" data-path="paths.${key}" value="${E.esc(cfg.paths[key] || '')}" placeholder="Not set">
         <button class="btn" data-browse="${key}">${ic.folder()} Browse</button></div></div></section>`;
-    return row('clientTxt', 'Client.txt', 'The game log. Usually in the <code>logs</code> folder of your Path of Exile install. Changing it rebuilds league stats (a backup is kept).') +
+    const where = snap.pathSource && snap.pathSource.poe ? `Your Path of Exile was found in ${E.esc(snap.pathSource.poe === 'standalone' ? 'the standalone client' : snap.pathSource.poe)}.` : 'It also runs by itself on the first start.';
+    const auto = `<section class="setrow"><div><h2>Find automatically</h2><p>Exilogue looks in the usual places: Steam (all libraries), the standalone client, Epic, and the default folders of Path of Building and Awakened PoE Trade. It only fills in paths that don't work now.</p></div>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start"><button class="btn" data-act="paths-auto">${ic.refresh()} Look again</button><span class="sub" style="white-space:normal">${where}</span></div></section>`;
+    return auto + row('clientTxt', 'Client.txt', 'The game log. Usually in the <code>logs</code> folder of your Path of Exile install. Changing it rebuilds league stats (a backup is kept).') +
       row('poeExe', 'Path of Exile', 'PathOfExile.exe or PathOfExile_x64.exe, for the Play button.') +
       row('pobExe', 'Path of Building', 'Optional, for Launch.') +
       row('aptExe', 'Awakened PoE Trade', 'Optional, for Launch.');

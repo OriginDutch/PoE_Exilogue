@@ -116,7 +116,7 @@
         const dpm = g.deaths / g.runs;
         const avgCls = ''; // neutral: no judgement on map speed (layout, mobs and luck decide most of it)
         const open = ui.mapOpen === g.key;
-        const main = `<tr class="click${open ? ' open' : ''}" data-mgroup="${E.esc(g.key)}"><td style="font-weight:600">${E.esc(g.name)}</td><td>${g.tier ? 'T' + g.tier : '–'}</td><td class="r">${g.runs}</td>
+        const main = `<tr class="click${open ? ' is-open' : ''}" data-mgroup="${E.esc(g.key)}"><td style="font-weight:600">${E.esc(g.name)}</td><td>${g.tier ? 'T' + g.tier : '–'}</td><td class="r">${g.runs}</td>
           <td class="r ${avgCls}">${E.fmt(g.avg)}</td><td class="r">${E.fmt(g.best)}</td><td class="r ${g.deaths && dpm >= 0.5 ? 'bad' : ''}">${g.deaths}</td>
           <td class="r"><span class="dpm"><span class="${dpm >= 0.5 ? 'bad' : ''}">${dpm.toFixed(2)}</span><span class="minibar"><i class="${dpm >= 0.5 ? 'bad' : ''}" style="width:${Math.round(100 * dpm / maxDpm)}%"></i></span></span></td>
           <td class="dim">${relDay(g.last)}</td></tr>`;

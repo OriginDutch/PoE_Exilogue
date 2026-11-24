@@ -196,6 +196,21 @@
     },
     hide: el => save({ layout: { hidden: { [el.dataset.id]: !state.cfg.layout.hidden[el.dataset.id] } } }),
     'welcome-later': () => save({ ui: { welcomeDone: true } }),
+    'paths-auto': async b => {
+      b.disabled = true;
+      const r = await ej.pathsDetect().catch(() => null);
+      state.snap = await ej.snapshot(); state.cfg = await ej.getConfig(); render(true);
+      const names = { poeExe: 'Path of Exile', clientTxt: 'Client.txt', pobExe: 'Path of Building', aptExe: 'Awakened PoE Trade' };
+      if (!r) return E.toastError('Looking for the game failed.');
+      // A different log means rebuilding league stats: same question as Browse.
+      if (r.suggestLog && await E.confirm({ title: 'Use the log it found?', body: `Found ${r.suggestLog}. Switching rebuilds all league stats from that file. A backup of your current stats is kept.`, ok: 'Use it' })) {
+        if (await save({ paths: { clientTxt: r.suggestLog } })) r.changed.push('clientTxt');
+      }
+      const P = state.snap.paths;
+      if (r.changed.length) E.toast('Filled in: ' + r.changed.map(k => names[k]).join(', '), { kind: 'ok' });
+      else if (P.clientTxt && P.poeExe) E.toast('Your paths already work. Nothing changed.');
+      else E.toast(r.found.length ? 'Nothing new found for the paths that are missing. Use Browse.' : 'Found nothing in the usual places. Use Browse.');
+    },
     collapse: () => save({ ui: { sidebarCollapsed: !state.cfg.ui.sidebarCollapsed } }),
     motion: () => save({ ui: { motion: !state.cfg.ui.motion } }),
     'maps-all': async () => { ui.showAllMaps = !ui.showAllMaps; if (ui.showAllMaps) ui.allMaps = await ej.allMaps(); render(true); },
@@ -249,8 +264,10 @@
       const key = br.dataset.browse;
       const f = await ej.pickFile(key === 'clientTxt' ? { filters: [{ name: 'Log file', extensions: ['txt'] }] } : { filters: [{ name: 'Program', extensions: ['exe'] }] });
       if (!f) return;
-      if (key === 'clientTxt' && !(await E.confirm({ title: 'Use this log?', body: 'Changing Client.txt rebuilds all league stats from the new file. A backup of your current stats is kept.', ok: 'Use it' }))) return;
-      await save({ paths: { [key]: f }, ui: { welcomeDone: true } });
+      // During the first start there are no stats to rebuild yet, and picking a file doesn't close the setup card (Start/Later do).
+      const fresh = !state.cfg.ui.welcomeDone;
+      if (key === 'clientTxt' && !fresh && !(await E.confirm({ title: 'Use this log?', body: 'Changing Client.txt rebuilds all league stats from the new file. A backup of your current stats is kept.', ok: 'Use it' }))) return;
+      await save({ paths: { [key]: f } });
       return;
     }
     const rs = t.closest('[data-restore]');
@@ -305,14 +322,13 @@
       const p = t.dataset.path, prev = p.split('.').reduce((o, k) => o && o[k], state.cfg) || '';
       const val = t.value.trim();
       if (val === String(prev).slice(0, p === 'league.start' ? 16 : undefined)) return;
-      if ((p === 'paths.clientTxt' || p === 'league.start') &&
+      if ((p === 'paths.clientTxt' || p === 'league.start') && state.cfg.ui.welcomeDone &&
         !(await E.confirm({ title: 'Rebuild league stats?', body: 'This rebuilds all league stats from Client.txt. A backup of your current stats is kept.', ok: 'Rebuild' }))) {
         t.value = p === 'league.start' ? String(prev).slice(0, 16) : prev; return;
       }
       const patch = {}; let o = patch; const parts = p.split('.');
       parts.slice(0, -1).forEach(k => { o = o[k] = {}; });
       o[parts[parts.length - 1]] = val;
-      if (p.startsWith('paths.')) patch.ui = { welcomeDone: true };
       if (!(await save(patch))) t.value = p === 'league.start' ? String(prev).slice(0, 16) : prev;
     }
   });

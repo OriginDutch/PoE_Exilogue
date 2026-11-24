@@ -12,7 +12,7 @@ base_cfg = {
   "ui": {"theme": "system", "darkPalette": "night", "lightPalette": "paper", "font": "source", "motion": True, "sidebarCollapsed": False, "welcomeDone": True},
   "layout": {"order": ["poe","maps","campaign","wealthy","overlay","filter","pob","apt","ninja","trade","goal","today","fate","threads"], "sizes": {}, "hidden": {}},
   "breaks": {"enabled": True, "campaign": True, "everyMin": 60, "sound": {"on": True, "volume": 50}},  "sheets": {"list": [{"id": "a1", "name": "Blight-strat", "unit": "chaos", "view": "ratio", "stack": 10, "sort": "manual", "items": [{"type": "Thread", "id": "abyss-thread", "name": "Abyss Thread", "label": "", "override": None, "view": None},{"type": "Thread", "id": "legion-thread", "name": "Legion Thread", "label": "", "override": None, "view": None},{"type": "Thread", "id": "blight-thread", "name": "Blight Thread", "label": "", "override": 2.7, "view": None},{"type": "Thread", "id": "bestiary-thread", "name": "Bestiary Thread", "label": "", "override": None, "view": None},{"type": "Thread", "id": "ultimatum-thread", "name": "Ultimatum Thread", "label": "", "override": None, "view": None},{"type": "Thread", "id": "breach-thread", "name": "Breach Thread", "label": "", "override": None, "view": None},{"type": "Thread", "id": "betrayal-thread", "name": "Betrayal Thread", "label": "", "override": None, "view": None},{"type": "Thread", "id": "incursion-thread", "name": "Incursion Thread", "label": "", "override": None, "view": None},{"type": "Thread", "id": "expedition-thread", "name": "Expedition Thread", "label": "", "override": None, "view": None},{"type": "Thread", "id": "ritual-thread", "name": "Ritual Thread", "label": "", "override": None, "view": None}]}, {"id": "b2", "name": "Oils", "unit": "chaos", "view": "each", "stack": 10, "sort": "value", "items": []}], "active": "a1", "seeded": True, "win": {"x": None, "y": None, "w": 440, "h": 600, "pin": False}}, "goal": {"name": "Mageblood", "id": "mageblood-4-flasks-heavy-belt", "type": "UniqueAccessory", "label": "4 Flasks", "divines": None},
-  "launch": {"pob": True, "apt": True, "we": True, "custom": [{"id": "c1", "name": "Sidekick", "target": "C:\\Tools\\Sidekick.exe", "on": False}]}, "weSync": {"background": True, "everyMin": 30},
+  "launch": {"pob": True, "apt": True, "we": True, "custom": [{"id": "c1", "name": "Sidekick", "target": "C:\\Tools\\Sidekick.exe", "on": False}]}, "weSync": {"background": True, "everyMin": 30, "setup": "done"}, "essences": {"enabled": True, "display": None},
   "window": {}, "neversink": {}, "systemDark": True, "overlayUnlocked": False, "platform": "win32"}
 cache = {}
 def snap(s):
@@ -47,11 +47,12 @@ window.ej = { getConfig: async () => window.__CFG, setConfig: async p => deep(wi
   neversinkSynced: async()=>{}, resetLeague: async()=>{}, listBackups: async()=>[{file:'state.backup-1.json',at:nowFix-86400e3,size:48000}],
   restoreBackup: async()=>({ok:true}), lockOverlay: async()=>{}, resetOverlay: async()=>{}, overlayBounds: async()=>({x:0,y:0,width:280,height:200}),
   fitOverlay: ()=>{}, setOverlayBounds: ()=>{}, overlayBoundsDone: ()=>{}, setVisible: ()=>{},
-  icons: async () => (window.__ICONS || {}),
+  icons: async () => (window.__ICONS || {}), weSetupInfo: async () => ({browser:'chrome'}), weSetupOpen: async () => true, weSetupCopy: async () => true, weSetupSkip: async () => true,
   storage: async () => ({ io: { since: nowFix - 9*86400e3, dbWritten: 31.4*1048576, backupWritten: 6.2*1048576, configWritten: 412*1024, logRead: 186*1048576, otherRead: 2.3*1048576 },
     files: { database: 7.8*1048576, backups: 15.1*1048576, backupCount: 3, keepBackups: 10, config: 3200, other: 2331, engine: 38.5*1048576, total: 61.4*1048576 }, clientTxt: 612*1048576, dir: 'C:/Users/you/AppData/Roaming/Exilogue' }),
   win: { min(){}, max(){}, close(){}, state: async()=>({maximized:false}), onState(){} },
   onSnapshot: fn => {}, onTick: fn => {}, onConfig: fn => {}, onOverlayUnlocked: fn => { if (window.__UNLOCK) setTimeout(()=>fn(true), 10); } };
+window.ej = new Proxy(window.ej, { get: (t, k) => (k in t ? t[k] : () => Promise.resolve(null)) }); // newer IPC not stubbed yet
 """
 def cfg(**kw):
     c = json.loads(json.dumps(base_cfg))

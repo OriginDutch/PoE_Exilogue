@@ -116,6 +116,11 @@ class LeagueDb {
   }
 
   hasData() { for (const k of this.written.keys()) if (k.startsWith('t.')) return true; return false; }
+  // Something worth keeping: at least one event or map (a freshly started tracker saves keys, but no content).
+  hasContent() {
+    try { return !!(this.db.prepare('SELECT 1 FROM events LIMIT 1').get() || this.db.prepare('SELECT 1 FROM maps LIMIT 1').get()); }
+    catch { return this.hasData(); }
+  }
 
   // { tracker, offset, file, minStamp, head, maps, tail } — tracker is null when nothing was saved yet.
   load() {

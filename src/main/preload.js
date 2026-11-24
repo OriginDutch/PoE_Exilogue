@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('ej', {
   sheetSort: (id, sort) => ipcRenderer.invoke('sheet:sort', id, sort),
   sheetRefresh: () => ipcRenderer.invoke('sheet:refresh'),
   openUrl: url => ipcRenderer.invoke('open:url', url),
+  pathsDetect: () => ipcRenderer.invoke('paths:detect'),
   weSetupInfo: () => ipcRenderer.invoke('we:setup-info'),
   weSetupOpen: (what, browser) => ipcRenderer.invoke('we:setup-open', what, browser),
   weSetupCopy: browser => ipcRenderer.invoke('we:setup-copy', browser),
