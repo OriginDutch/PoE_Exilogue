@@ -159,7 +159,7 @@
     play: async () => { const r = await ej.launch('poe'); if (!r.ok) E.toastError(r.error); },
     pob: async () => { const r = await ej.launch('pob'); if (!r.ok) E.toastError(r.error); },
     'ov-toggle': () => save({ overlay: { enabled: !state.cfg.overlay.enabled } }),
-    'we-keep': async b => { await ej.wealthResolve(b.dataset.id, true); state.snap = await ej.snapshot(); render(true); E.toast('Counted: this is your stash now.', { kind: 'ok' }); },
+    'we-keep': async b => { const ok = await ej.wealthResolve(b.dataset.id, true); state.snap = await ej.snapshot(); render(true); if (ok) E.toast('Counted: this is your stash now.', { kind: 'ok' }); else E.toast('That export was already answered.'); },
     'we-drop': async b => { await ej.wealthResolve(b.dataset.id, false); state.snap = await ej.snapshot(); render(true); },
     'we-refetch': async () => { const r = await ej.wealthRefetch(); ui.weWaitSince = Date.now(); ui.weWaitAt = (state.snap.wealth && state.snap.wealth.at) || 0; state.snap = await ej.snapshot(); render(true); E.toast(r && r.inTab ? 'Exporting in your open Wealthy Exile tab…' : 'Wealthy Exile opened, exporting…'); },
     'ess-toggle': () => save({ essences: { enabled: !state.cfg.essences.enabled } }),
@@ -393,9 +393,11 @@
   });
   // Pli-pling when an export comes in with other tabs than last time (the question is on Home).
   ej.onWealthCheck(async () => {
-    const v = (state.cfg.breaks && state.cfg.breaks.sound && state.cfg.breaks.sound.volume) || 60;
-    try { const a = new Audio('sounds/export-check.wav'); a.volume = Math.max(0.2, Math.min(1, v / 100)); a.play().catch(() => {}); } catch { /* no audio device */ }
+    const sv = state.cfg.breaks && state.cfg.breaks.sound && state.cfg.breaks.sound.volume;
+    const v = Number.isFinite(sv) ? sv : 60; // follows the break sound's volume slider
+    try { const a = new Audio('sounds/export-check.wav'); a.volume = Math.max(0, Math.min(1, v / 100)); a.play().catch(() => {}); } catch { /* no audio device */ }
     state.snap = await ej.snapshot(); render(true);
+    if (ui.view !== 'home') E.toast('Your Wealthy Exile export needs an answer: see Home.');
   });
   ej.onTick(t => { E.applyTick(state.snap, t); onData(false); });
   document.addEventListener('visibilitychange', async () => {

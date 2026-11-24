@@ -145,7 +145,7 @@ class Wealth {
     const t = Math.min(Date.now(), Math.round(st2.mtimeMs) || Date.now());
     let added = false;
     try {
-      const exists = this.db.prepare('SELECT id, t FROM exports WHERE hash = ?').get(hash);
+      const exists = this.db.prepare('SELECT id, t, status FROM exports WHERE hash = ?').get(hash);
       if (!exists) {
         const ex = readExport(buf.toString('utf8'));
         const top = JSON.stringify(ex.items.slice(0, 5));
@@ -158,12 +158,17 @@ class Wealth {
         const prev = this.db.prepare("SELECT tabs FROM exports WHERE status = 'ok' AND t <= ? ORDER BY t DESC LIMIT 1").get(t);
         const diff = prev ? tabDiff(Object.keys(JSON.parse(prev.tabs)), Object.keys(ex.tabs)) : null;
         const status = diff && (diff.missing.length || diff.added.length) ? 'pending' : 'ok';
-        if (status === 'pending') this.db.prepare("UPDATE exports SET status = 'discarded' WHERE status = 'pending'").run(); // only the newest one asks
         this.db.prepare('INSERT INTO exports (t, hash, chaos, div_price, top, tabs, items, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
           .run(t, hash, ex.chaos, div, top, tabs, ex.items.length, status);
         if (status === 'pending' && this.o.onPending) this.o.onPending(this.pendingExport());
         this.written += top.length + tabs.length + 120;
         added = true;
+      } else if (exists.status === 'discarded') {
+        // The same export as one you said wasn't on purpose (the filter is still on): ask again.
+        this.db.prepare("UPDATE exports SET status = 'pending', t = ? WHERE id = ?").run(Math.max(t, exists.t), exists.id);
+        this.written += 64;
+        added = true;
+        if (this.o.onPending) this.o.onPending(this.pendingExport());
       } else if (t > exists.t) {
         // Same stash as an earlier export: nothing changed, but this is the newest moment it was confirmed.
         this.db.prepare('UPDATE exports SET t = ? WHERE id = ?').run(t, exists.id);
@@ -228,7 +233,7 @@ class Wealth {
 
   // Every line of the newest export still on disk (the archive keeps the newest KEEP_FILES CSVs), for the essence
   // overlay: the database only keeps totals. → { at, items: [{ name, tab, qty, total }] } or null.
-  latestItems() {
+  latestItems(want = () => true) {
     let files = [];
     try {
       files = fs.readdirSync(this.archive).filter(n => NAME.test(n))
@@ -238,8 +243,10 @@ class Wealth {
       try {
         const buf = fs.readFileSync(f);
         this.read += buf.length;
-        return { at: Math.round(t), items: readExport(buf.toString('utf8')).items };
+        const items = readExport(buf.toString('utf8')).items;
+        if (want(items)) return { at: Math.round(t), items };
       } catch { /* unreadable: try the one before it */ }
+      // not what's wanted (a filtered export without essences): try the one before it
     }
     return null;
   }
@@ -276,11 +283,21 @@ class Wealth {
   }
 
   // keep = true: on purpose, the export is complete and counts (its tabs are the new normal). false: dropped.
+  // The answer also goes for other waiting exports with exactly the same tabs (the same filter, synced again).
   resolve(id, keep) {
-    const r = this.db.prepare("UPDATE exports SET status = ? WHERE id = ? AND status = 'pending'").run(keep ? 'ok' : 'discarded', id);
-    if (r.changes) { this.rev++; this.written += 32; if (this.o.onChange) this.o.onChange(); }
-    return r.changes > 0;
+    const row = this.db.prepare("SELECT tabs FROM exports WHERE id = ? AND status = 'pending'").get(id);
+    if (!row) return false;
+    const key = JSON.stringify(Object.keys(JSON.parse(row.tabs)).sort());
+    const same = this.db.prepare("SELECT id, tabs FROM exports WHERE status = 'pending'").all()
+      .filter(r => JSON.stringify(Object.keys(JSON.parse(r.tabs)).sort()) === key).map(r => r.id);
+    const upd = this.db.prepare('UPDATE exports SET status = ? WHERE id = ?');
+    for (const i of same) upd.run(keep ? 'ok' : 'discarded', i);
+    this.rev++; this.written += 32 * same.length; if (this.o.onChange) this.o.onChange();
+    return true;
   }
+
+  // Newest moment an export that counts came in (for "export picked up" after fixing a filter).
+  latestOkAt() { const r = this.db.prepare("SELECT MAX(t) t FROM exports WHERE status = 'ok'").get(); return (r && r.t) || 0; }
 
   close() { this.stop(); try { this.db.close(); } catch { /* closed */ } }
 }

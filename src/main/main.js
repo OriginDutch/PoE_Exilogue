@@ -388,7 +388,7 @@ function snapshot() {
     stateCorrupt: leagueDb && leagueDb.corruptFile ? path.basename(leagueDb.corruptFile) : null,
     stats: tracker ? tracker.snapshot(Date.now()) : null,
     iconsRev: icons ? icons.rev : 0,
-    wealth: wealth ? { ...ws, pending: wealth.pendingExport(), fixing: weFixing, history: wealthHistory(), syncAt: wealthSyncAt, syncEvery: WEALTH_SYNC_MS, manualExpiredAt: weManualExpiredAt, failAt: weFailAt, scriptSeenAt: weScriptSeenAt, bgSyncAt: weBgSyncAt, serverError: weServer && weServer.error } : null,
+    wealth: wealth ? { ...ws, pending: wealth.pendingExport(), fixing: weFixing && !(wealth.latestOkAt() > weFixingAt), history: wealthHistory(), syncAt: wealthSyncAt, syncEvery: WEALTH_SYNC_MS, manualExpiredAt: weManualExpiredAt, failAt: weFailAt, scriptSeenAt: weScriptSeenAt, bgSyncAt: weBgSyncAt, serverError: weServer && weServer.error } : null,
     divRate: sessionDivRate(),
     breakPrompt,
     goal: goalInfo(),
@@ -497,7 +497,8 @@ function refreshProfileSoon() {
   profileSoon = setTimeout(() => { profileSoon = null; profileLast = Date.now(); checkProfile(); }, wait);
 }
 
-let weFixing = false; // dropped an export that looked filtered: Home asks to fix it in Wealthy Exile and export again
+let weFixing = false, weFixingAt = 0; // dropped an export that looked filtered: Home asks to fix it and export again,
+// until an export that counts comes in after that
 
 function weSyncNow() {
   const left = wealthSyncAt + WEALTH_SYNC_MS - Date.now();
@@ -600,7 +601,7 @@ async function freshExport(onProgress) {
 
 // → what the overlay draws; positions are in the game's pixels, the window divides by its own devicePixelRatio.
 async function essencePlan(heightPx) {
-  const exp = wealth ? wealth.latestItems() : null;
+  const exp = wealth ? wealth.latestItems(items => items.some(i => / Essence of /.test(i.name))) : null; // newest export with essences
   if (!exp || !exp.items.length) return { state: 'error', at: essences.geometry({ rows: [], total: 0 }, heightPx).total, message: 'No Wealthy Exile export yet' };
   let pr;
   try { pr = await ninja.essencePrices(config.data.league.name); }
@@ -1500,12 +1501,12 @@ function setupIpc() {
   // The export had other tabs than last time: keep it (on purpose, it's complete) or drop it (fix it in Wealthy Exile).
   ipcMain.handle('wealth:resolve', (_e, id, keep) => {
     const ok = wealth ? wealth.resolve(Number(id), !!keep) : false;
-    weFixing = ok && !keep;
+    weFixing = ok && !keep; weFixingAt = Date.now();
     if (dashWin && !dashWin.isDestroyed()) dashWin.flashFrame(false);
     return ok;
   });
   // After fixing the filter in Wealthy Exile: a new export right away (no 5-minute wait).
-  ipcMain.handle('wealth:refetch', () => { weFixing = false; wealthSyncAt = 0; return weSyncNow(); });
+  ipcMain.handle('wealth:refetch', () => { wealthSyncAt = 0; return weSyncNow(); }); // the fix notice stays until an export counts
   ipcMain.handle('pick:file', async (_e, opts) => {
     const r = await dialog.showOpenDialog(dashWin, { properties: ['openFile'], filters: opts?.filters });
     return r.canceled ? null : r.filePaths[0];
@@ -1674,7 +1675,7 @@ app.whenReady().then(() => {
         dashWin.webContents.send('wealth:check', p);
         if (!dashWin.isFocused()) dashWin.flashFrame(true);
       },
-      divPrice: () => (ninja && ninja.currency && ninja.currency.divineChaos) || null,
+      divPrice: () => (ninja && ninja.currency && Date.now() - ninja.currency.at < 2 * 3600e3 && ninja.currency.divineChaos) || null, // fresh only
     });
     wealth.start();
     startWeSync();

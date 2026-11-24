@@ -110,6 +110,13 @@ test('wealth: other tabs than last time wait for an answer; no own divines uses 
   assert.equal(w.resolve(asked[0].id, false), true);
   assert.equal(w.pendingExport(), null);
   assert.equal(w.summary(0).chaos, 510);
+  // the same filtered file again (filter still on): asked again instead of vanishing
+  await imp('Wealthy-Exile-export-2b.csv', [['Deafening Essence of Zeal', 'Ess', 14, 22, 308]]);
+  assert.equal(asked.length, 2);
+  assert.equal(w.pendingExport().id, asked[0].id);
+  w.resolve(asked[0].id, false);
+  // the essence overlay skips exports without essences
+  assert.equal(w.latestItems(items => items.some(i => / Essence of /.test(i.name))).items[0].name, 'Deafening Essence of Zeal');
   await imp('Wealthy-Exile-export-3.csv', [['Chaos Orb', 'B', 50, 1, 50]]); // FR emptied for real
   w.resolve(w.pendingExport().id, true);
   assert.equal(w.summary(0).chaos, 50);
