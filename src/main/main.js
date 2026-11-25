@@ -74,6 +74,8 @@ const DEFAULT_CONFIG = {
   },
   window: { bounds: null, maximized: false },
   neversink: { lastSyncedTag: null, syncedAt: null, remind: true },
+  // Release channel: stable, or test (pre-releases first). `shown`: the hidden switch was revealed (5 clicks on the version).
+  updates: { channel: 'stable', shown: false },
   // Lifetime disk counters (bytes), kept here so a rebuild, restore or new league doesn't reset them.
   io: { since: null, dbWritten: 0, backupWritten: 0, configWritten: 0, iconWritten: 0, wealthWritten: 0, logRead: 0, otherRead: 0 },
 };
@@ -142,6 +144,7 @@ function sanitizeConfig() {
   c.layout.order = order;
   c.neversink = { lastSyncedTag: c.neversink && typeof c.neversink.lastSyncedTag === 'string' ? c.neversink.lastSyncedTag : null, syncedAt: c.neversink && Number.isFinite(c.neversink.syncedAt) ? c.neversink.syncedAt : null, remind: !(c.neversink && c.neversink.remind === false) };
   for (const [id, sz] of Object.entries(c.layout.sizes || {})) if (!SIZES.includes(sz)) delete c.layout.sizes[id];
+  c.updates = { channel: c.updates && c.updates.channel === 'test' ? 'test' : 'stable', shown: !!(c.updates && (c.updates.shown || c.updates.channel === 'test')) };
   delete c.links; delete c.background;
 }
 
@@ -335,7 +338,7 @@ function setGameRunning(running) {
   gameRunning = running;
   if (!hotkeysPaused) registerHotkeys(); // taken while the game runs, released when it closes (binds re-read too)
   // A downloaded update installs when Exilogue closes, but never while the game runs.
-  if (autoUpdater) autoUpdater.autoInstallOnAppQuit = !running;
+  syncInstallOnQuit();
   if (caughtUp && tracker) tracker.setPaused(!running, Date.now());
   updateOverlayVisibility();
 }
@@ -452,7 +455,7 @@ function diagnostics() {
     `Path of Building: ${yes(p.pobExe)} · Awakened PoE Trade: ${yes(p.aptExe)}`,
     `Overlay: ${config.data.overlay.enabled ? 'on' : 'off'} · exclusive fullscreen ${yes(gameExclusiveFs)} · screens ${screen.getAllDisplays().length}`,
     `Hotkeys: ${Object.entries(hotkeyStatus || {}).filter(([, v]) => v && !['ok', 'none', 'waiting'].includes(v)).map(([k, v]) => k + ' ' + v).join(', ') || 'all ok'}`,
-    `Updates: ${updateState.state}${updateState.error ? ' · ' + scrubPaths(updateState.error) : ''}`,
+    `Updates: ${config.data.updates.channel} channel · ${updateState.state}${updateState.error ? ' · ' + scrubPaths(updateState.error) : ''}`,
     `poe.ninja: ${ninja.rev ? 'prices loaded' : 'no prices yet'} · profile: ${profileStatus.state}`,
     `Wealthy Exile: exports ${w ? w.count || 0 : 0} · script ${weScriptVersion || config.data.weSync.seenVersion || 'never seen'}${weServer && weServer.error ? ' · server ' + scrubPaths(weServer.error) : ''}${wealth && wealth.lastError ? ' · last error ' + scrubPaths(wealth.lastError.msg || '') : ''}`,
     `Database: ${leagueDb && leagueDb.corruptFile ? 'a damaged file was set aside' : 'ok'}`,
@@ -1122,14 +1125,23 @@ function startUpdater() {
   if (!app.isPackaged || !fs.existsSync(path.join(process.resourcesPath, 'app-update.yml'))) return;
   try { ({ autoUpdater } = require('electron-updater')); } catch { return; }
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = !gameRunning;
   autoUpdater.logger = null;
+  applyChannel();
   const set = s => { updateState = { ...updateState, ...s, at: Date.now() }; };
   autoUpdater.on('checking-for-update', () => set({ state: 'checking' }));
   autoUpdater.on('update-not-available', () => set({ state: 'none' }));
   autoUpdater.on('update-available', i => set({ state: 'downloading', next: i && i.version, pct: 0 }));
   autoUpdater.on('download-progress', p => { const pct = Math.round(p.percent || 0); if (pct - (updateState.pct || 0) >= 10) set({ pct }); });
-  autoUpdater.on('update-downloaded', i => set({ state: 'ready', next: i && i.version }));
+  // electron-updater adds its install-on-quit handler right after this event, and only if autoInstallOnAppQuit is true
+  // at that moment: so it is true here, and the real value (game running, blocked) is set right after. It is read again at quit.
+  autoUpdater.on('update-downloaded', i => {
+    const v = String((i && i.version) || '');
+    autoUpdater.autoInstallOnAppQuit = true;
+    // A test version that finished downloading after switching back to Stable: not installed.
+    installBlocked = config.data.updates.channel !== 'test' && v.includes('-');
+    setImmediate(syncInstallOnQuit);
+    set(installBlocked ? { state: 'none', next: null, pct: 0 } : { state: 'ready', next: v });
+  });
   autoUpdater.on('error', e => set({ state: 'error', error: String((e && e.message) || e).split('\n')[0].slice(0, 160) }));
   const check = () => { if (updateState.state !== 'ready' && updateState.state !== 'downloading') autoUpdater.checkForUpdates().catch(() => {}); };
   setTimeout(check, 15 * 1000);
@@ -1137,13 +1149,31 @@ function startUpdater() {
   updateCheckNow = check;
 }
 let updateCheckNow = null;
+// A test version that was downloaded before switching back to Stable is not installed (no going back to it either).
+let installBlocked = false;
+function syncInstallOnQuit() { if (autoUpdater) autoUpdater.autoInstallOnAppQuit = !gameRunning && !installBlocked; }
+// Test: pre-releases (vX.Y.Z-beta.N) and stable releases, whichever is newest. Stable: stable releases only.
+// Never a downgrade: someone on a test version who goes back to Stable keeps it until Stable passes it.
+// (autoUpdater.channel is left alone: setting it turns allowDowngrade on.)
+function applyChannel() {
+  const test = config.data.updates.channel === 'test';
+  updateState = { ...updateState, channel: test ? 'test' : 'stable' };
+  if (!autoUpdater) return;
+  autoUpdater.allowPrerelease = test;
+  autoUpdater.allowDowngrade = false;
+  if (!test && (updateState.state === 'ready' || updateState.state === 'downloading') && /-/.test(String(updateState.next || ''))) {
+    installBlocked = true;
+    updateState = { ...updateState, state: 'none', next: null, pct: 0, at: Date.now() };
+  } else if (test) installBlocked = false;
+  syncInstallOnQuit();
+}
 // Closing Exilogue with an update ready: look for the game once more first (the regular check can be a minute old).
 let quitChecked = false;
 app.on('before-quit', e => {
   if (quitChecked || !autoUpdater || updateState.state !== 'ready' || process.platform !== 'win32') return;
   e.preventDefault();
   quitChecked = true;
-  checkGameProcess().catch(() => {}).finally(() => { autoUpdater.autoInstallOnAppQuit = !gameRunning; app.quit(); });
+  checkGameProcess().catch(() => {}).finally(() => { syncInstallOnQuit(); app.quit(); });
 });
 
 // ---------- Awakened PoE Trade: running?, started by us when, its price-check key ----------
@@ -1661,6 +1691,7 @@ function setupIpc() {
     if (patch.paths) { refreshPaths(); if (iconRefresh) iconRefresh(); }
     if (patch.overlay && 'enabled' in patch.overlay) setOverlayEnabled(config.data.overlay.enabled);
     if (patch.essences && !config.data.essences.enabled) hideEssences();
+    if (patch.updates && 'channel' in patch.updates) { applyChannel(); if (updateCheckNow) setTimeout(updateCheckNow, 500); }
     // Stats are wiped before the new path/start is saved: a crash in between leaves old stats with the old config.
     if (JSON.stringify([config.data.paths.clientTxt, config.data.league.start]) !== before) {
       try { resetState(); } catch (e) {

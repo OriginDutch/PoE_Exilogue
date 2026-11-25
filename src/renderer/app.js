@@ -52,7 +52,7 @@
     };
     // Same art as the tiles; the two-letter monogram only where there is none (yet).
     const mini = (id, m) => { const src = E.iconOf(id); return src ? `<span class="mini img" aria-hidden="true"><img src="${E.esc(src)}" alt=""></span>` : `<span class="mini" aria-hidden="true">${m}</span>`; };
-    side.innerHTML = `<div class="brand">${ic.brand()}<span>Exilogue</span></div>
+    side.innerHTML = `<div class="brand">${ic.brand()}<span>Exilogue</span>${state.cfg.updates && state.cfg.updates.channel === 'test' ? '<b class="chtag" title="Test channel">TEST</b>' : ''}</div>
       ${item('home', `<span class="ic">${ic.home()}</span>`, 'Home', 'data-nav="home"')}
       ${item('events', `<span class="ic">${ic.events()}</span>`, 'Events', 'data-nav="events"')}
       <div class="sec">Tools</div>
@@ -185,6 +185,12 @@
     },
     'apt': async () => { const r = await ej.launch('apt'); if (r && !r.ok) E.toastError(r.error); },
     'update-install': async () => { const r = await ej.updateInstall(); if (r && !r.ok) E.toastError(r.error); },
+    // Settings › About & updates: 5 clicks on the version within 3 s reveal the release channel.
+    'ver-tap': () => {
+      const now = Date.now(); ui.verTaps = (ui.verTaps || []).filter(t => now - t < 3000).concat(now);
+      if (ui.verTaps.length >= 5 && !(state.cfg.updates && state.cfg.updates.shown)) { ui.verTaps = []; save({ updates: { shown: true } }).then(ok => ok && E.toast('Release channel unlocked')); }
+    },
+    channel: el => { if (el.value === (state.cfg.updates || {}).channel) return; save({ updates: { channel: el.value, shown: el.value === 'test' } }).then(ok => ok && E.toast(el.value === 'test' ? 'Test channel on' : 'Stable channel on. The switch is hidden again.')); },
     'update-check': async () => { await ej.updateCheck(); E.toast('Checking for updates…'); setTimeout(() => render(true), 3000); },
     'brk-toggle': () => save({ breaks: { enabled: !state.cfg.breaks.enabled } }),
     'brk-campaign': () => save({ breaks: { campaign: !state.cfg.breaks.campaign } }),

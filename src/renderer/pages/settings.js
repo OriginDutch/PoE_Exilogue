@@ -7,16 +7,24 @@
   const opt = (name, value, label, checked) => `<label class="opt"><input type="radio" name="${name}" value="${value}" data-pal="${name}" ${checked ? 'checked' : ''}>${mock(value)}<div class="nm">${label}<span class="on">${ic.check(12)}</span></div></label>`;
 
   // Settings › About & updates: the version, its update state and Check now.
-  function updatesRow(snap) {
+  function updatesRow(snap, cfg) {
     const u = snap.update || { state: 'off' };
     const pill = { checking: 'Checking…', none: 'Up to date', downloading: `Downloading ${E.esc(u.next || '')}${u.pct ? ' · ' + u.pct + '%' : ''}`, ready: `${E.esc(u.next || '')} is ready`, error: 'Could not check' }[u.state];
     const detail = u.state === 'off' ? 'This copy doesn\'t update itself (installed versions do). Install Exilogue with the setup file to get updates.'
       : u.state === 'error' ? `Couldn't check for updates: ${E.esc(u.error || 'unknown error')}` : u.state === 'ready' ? 'It installs when you close Exilogue, or now with Restart and update.' : '';
-    return `<section class="setrow"><div><h2>Exilogue ${E.esc(u.version || '')}</h2><p>New versions come from GitHub. They download in the background and install when you close Exilogue, never while the game runs.</p></div>
+    return `<section class="setrow"><div><h2 data-act="ver-tap">Exilogue ${E.esc(u.version || '')}</h2><p>New versions come from GitHub. They download in the background and install when you close Exilogue, never while the game runs.</p></div>
       <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-start">
         ${pill ? `<span class="row" style="gap:10px;flex-wrap:wrap"><span class="pill${u.state === 'ready' ? ' acc' : ''}">${pill}</span>${u.at && u.state !== 'checking' ? `<span class="sub">checked ${E.ago(u.at)}</span>` : ''}</span>` : ''}
         ${detail ? `<span class="${u.state === 'error' ? 'st no' : 'muted'}" style="white-space:normal">${detail}</span>` : ''}
-        <div class="row" style="gap:8px;flex-wrap:wrap">${u.state === 'ready' ? `<button class="btn p" data-act="update-install" ${snap.gameRunning ? 'disabled' : ''}>Restart and update</button>${snap.gameRunning ? '<span class="sub">after you close the game</span>' : ''}` : u.state !== 'off' ? `<button class="btn" data-act="update-check" ${u.state === 'checking' || u.state === 'downloading' ? 'disabled' : ''}>Check now</button>` : ''}<button class="btn q" data-url="https://github.com/OriginDutch/PoE_Exilogue/releases">What's new ${ic.ext()}</button></div></div></section>`;
+        <div class="row" style="gap:8px;flex-wrap:wrap">${u.state === 'ready' ? `<button class="btn p" data-act="update-install" ${snap.gameRunning ? 'disabled' : ''}>Restart and update</button>${snap.gameRunning ? '<span class="sub">after you close the game</span>' : ''}` : u.state !== 'off' ? `<button class="btn" data-act="update-check" ${u.state === 'checking' || u.state === 'downloading' ? 'disabled' : ''}>Check now</button>` : ''}<button class="btn q" data-url="https://github.com/OriginDutch/PoE_Exilogue/releases">What's new ${ic.ext()}</button></div></div></section>${channelRow(cfg)}`;
+  }
+  // Hidden until the version above is clicked 5 times; stays while on Test, hides again when going back to Stable.
+  function channelRow(cfg) {
+    const up = cfg.updates || {}; if (!up.shown) return '';
+    const test = up.channel === 'test';
+    return `<section class="setrow" style="border-bottom:0"><div><h2>Release channel</h2><p>Test gets new versions first, and they can have bugs. Going back to Stable keeps the version you have until Stable is newer: it never installs an older version.</p></div>
+      <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-start"><div role="radiogroup" aria-label="Release channel" class="seg">${[['stable', 'Stable'], ['test', 'Test']].map(([v, l]) => `<label><input type="radio" name="channel" value="${v}" data-act="channel" ${up.channel === v ? 'checked' : ''}>${l}</label>`).join('')}</div>
+      <span class="muted" style="white-space:normal">${test ? 'You get test versions. Found a bug? Copy the diagnostics on the Help page and send them.' : 'You get stable versions only.'}</span></div></section>`;
   }
 
 
@@ -174,7 +182,7 @@
     render({ cfg, snap, ui }) {
       const tab = ui.settingsTab || 'appearance';
       const body = tab === 'appearance' ? appearance(cfg, snap) : tab === 'paths' ? paths(cfg, snap) : tab === 'league' ? league(cfg, ui, snap)
-        : tab === 'storage' ? storage(ui) : tab === 'about' ? updatesRow(snap) : tab === 'launch' ? launch(cfg, snap, ui)
+        : tab === 'storage' ? storage(ui) : tab === 'about' ? updatesRow(snap, cfg) : tab === 'launch' ? launch(cfg, snap, ui)
         : tab === 'overlay' ? `<div class="note" style="margin-top:20px">${ic.info()}<span>Overlay settings are on the Overlay page. <button class="lnk" data-nav="page:overlay">Open Overlay</button></span></div>` : hotkeys(cfg, snap, ui);
       return `<div style="max-width:1000px"><div class="head" style="margin-bottom:16px"><h1 class="h">Settings</h1></div>
         <div class="tabs" role="tablist" aria-label="Settings sections">${TABS.map(([k, l]) => `<button role="tab" aria-selected="${tab === k}" data-tab="${k}">${l}</button>`).join('')}</div>

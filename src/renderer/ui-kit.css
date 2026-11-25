@@ -31,6 +31,9 @@
 .side.col .brand{padding:4px 0 14px}
 .side.col .brand span{display:none}
 .brand svg{color:var(--acc)}
+.brand .chtag{font:700 9.5px/1 'Source Sans 3',sans-serif;letter-spacing:.08em;color:var(--live);border:1px solid currentColor;border-radius:4px;padding:2px 4px;margin-left:-2px}
+.side.col .brand{flex-direction:column;gap:5px}
+.side.col .brand .chtag{margin:0;font-size:8px;padding:1px 3px}
 .nav{display:flex;align-items:center;gap:10px;height:36px;padding:0 8px;border-radius:7px;color:var(--tx2);text-decoration:none;font-size:14px;font-weight:500;white-space:nowrap;border:0;background:none;font-family:inherit;cursor:pointer;width:100%;text-align:left;flex:none}
 .nav:hover{background:var(--hover);color:var(--tx)}
 .side.col .nav{width:44px;justify-content:center;padding:0}

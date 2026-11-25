@@ -1,0 +1,49 @@
+# Builds a TEST version (x.y.z-beta.N in package.json) and publishes it as a GitHub pre-release.
+# Only Exilogue installs on the Test channel (Settings › About & updates, revealed by 5 clicks on the version) pick it up;
+# Stable installs only see full releases. Start it by hand: Actions > Release test > Run workflow.
+name: Release test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # create the release and upload its files
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Only from main (the release tag goes on main's newest commit)
+        if: github.ref != 'refs/heads/main'
+        shell: bash
+        run: |
+          echo "::error::Run this workflow from main."
+          exit 1
+
+      - name: Test versions only (x.y.z-beta.N)
+        shell: bash
+        run: |
+          v=$(node -p "require('./package.json').version")
+          echo "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$' || { echo "::error::$v is not a test version (x.y.z-beta.N). Use the Release workflow for stable versions."; exit 1; }
+
+      - run: npm ci
+
+      - name: Tests
+        run: npm test
+
+      - name: Build installer and publish the pre-release
+        env:
+          EP_PRE_RELEASE: 'true'
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win nsis --x64 --publish always

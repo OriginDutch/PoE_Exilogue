@@ -1,6 +1,7 @@
 # Builds the Windows installer on GitHub's own Windows machine and publishes it as a GitHub release.
 # Exilogue's auto-update reads those releases (Exilogue-Setup-x.y.z.exe, .blockmap, latest.yml).
 #
+# Stable releases only. Test versions (x.y.z-beta.N) go through release-test.yml.
 # Start it by pushing a tag like v0.7.0 (it must match "version" in package.json),
 # or by hand: Actions > Release > Run workflow (uses the version in package.json).
 name: Release
@@ -37,6 +38,12 @@ jobs:
             echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version $v"
             exit 1
           fi
+
+      - name: Stable versions only (test versions use "Release test")
+        shell: bash
+        run: |
+          v=$(node -p "require('./package.json').version")
+          case "$v" in *-*) echo "::error::$v is a test version. Run the Release test workflow for it."; exit 1;; esac
 
       - run: npm ci
 
