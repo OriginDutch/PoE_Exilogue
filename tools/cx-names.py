@@ -2,7 +2,7 @@
 """Builds src/core/cx-names.json: GGG's internal item ids (as used by the public currency exchange history,
 https://web.poecdn.com/api/currency-exchange) -> the item's name.
 
-Source: RePoE's base_items.json (any fork that publishes it, e.g. github.com/lvlvllvlvllvlvl/RePoE, RePoE/data/).
+Source: RePoE's base_items.json, current version in github.com/repoe-fork/repoe-fork.github.io (data/base_items.json).
 Usage: python3 tools/cx-names.py path/to/base_items.json
 Items newer than that file have no name and simply get no exchange prices in Easyflips until the table is rebuilt.
 """
