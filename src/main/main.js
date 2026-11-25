@@ -518,7 +518,7 @@ const hiddenWc = new Set(); // windows whose page reports it can't be seen (cove
 let lastIdleTick = 0;
 function statusKey() {
   return JSON.stringify([gen, updateState, overlayNoteState && overlayNoteState.until, breakPrompt && [breakPrompt.shownAt, breakPrompt.revealed], ninja.rev, sheetCache.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [(weManualTick(), wealth.rev), wealth.lastError, wealthSyncAt, weBgSyncAt, weManualExpiredAt, weFailAt, weScriptVersion, Math.floor(weScriptSeenAt / 300000), weBgNext().state] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, hotkeyGame, overlayUnlocked,
-    profileStatus, neversinkLatest, config.data.neversink, flipsState && flipsState.at, flipsError, config.data.easyflips, pathsCache, leagueDb && leagueDb.corruptFile, (gameDisplayCached(), gameExclusiveFs)]);
+    profileStatus, neversinkLatest, config.data.neversink, flipsState && flipsState.at, cx && cx.rev, flipsError, config.data.easyflips, pathsCache, leagueDb && leagueDb.corruptFile, (gameDisplayCached(), gameExclusiveFs)]);
 }
 function broadcast() {
   const wins = [dashWin, overlayWin, sheetWin].filter(w => w && !w.isDestroyed() && w.isVisible() && !w.isMinimized() && !hiddenWc.has(w.webContents.id));
@@ -1166,13 +1166,32 @@ function flipsRefresh(force = false) {
   })();
   return flipsBusy;
 }
+// Flips with GGG's exchange data added: the chaos and divine market (last 12 h) for input and output, and a check
+// against real trades of the last 3 h ('real'). A flip real trades don't confirm counts as below the limits.
+let cxFlipsKey = null, cxFlips = null;
+function flipsWithCx() {
+  const h = cx && cx.get();
+  if (!flipsState || !h) return flipsState ? flipsState.flips : [];
+  const e = config.data.easyflips, key = `${flipsState.at}|${cx.rev}|${e.minMargin}`;
+  if (key === cxFlipsKey) return cxFlips;
+  cxFlips = flipsState.flips.map(f => {
+    const real = cxprices.check(f, h.recent, { minMargin: e.minMargin, known: h.prices });
+    const unconfirmed = real.status === 'unconfirmed';
+    // Confirmed by real trades beats "verify" (a margin over 50% on poe.ninja): it sorts with the normal flips.
+    return { ...f, cxIn: cxprices.compare(h.prices, f.in[0].name), cxOut: cxprices.compare(h.prices, f.out.name), real,
+      verify: f.verify && real.status !== 'confirmed', reasons: unconfirmed ? [...f.reasons, 'unconfirmed'] : f.reasons, below: f.below || unconfirmed };
+  });
+  // Same order as Easyflips: within the limits first, unflagged before "verify", then by margin.
+  cxFlips.sort((a, b) => (a.below - b.below) || (a.verify - b.verify) || (b.margin - a.margin));
+  cxFlipsKey = key;
+  return cxFlips;
+}
 function flipsView() {
   if (!flipsState) return null;
-  // Exchange markets (last 12 hours, GGG): what the input costs and the output pays, in chaos and in divines.
   const h = cx && cx.get();
-  const flips = h ? flipsState.flips.map(f => ({ ...f, cxIn: cxprices.compare(h.prices, f.in[0].name), cxOut: cxprices.compare(h.prices, f.out.name) })) : flipsState.flips;
+  const flips = flipsWithCx();
   // Limits may have changed since the last download: reapply them without downloading again.
-  return { ...flipsState, flips, cx: h ? { hours: h.hours, newest: h.newest } : null, ...flipsSummary(flipsState.flips) };
+  return { ...flipsState, flips, cx: h ? { hours: h.hours, recentHours: h.recent.hours, newest: h.newest } : null, ...flipsSummary(flips) };
 }
 function flipsSummary(flips) {
   const e = config.data.easyflips;
@@ -1186,7 +1205,7 @@ function flipsBackground() {
 }
 function flipsInfo() {
   if (!flipsState) return { state: flipsError ? 'error' : 'loading', error: flipsError };
-  const s = flipsSummary(flipsState.flips);
+  const s = flipsSummary(flipsWithCx());
   return { state: 'ok', count: s.count, best: s.best && { id: s.best.id, name: s.best.in[0].name, n: s.best.in[0].n, out: s.best.out, inIcon: s.best.in[0].icon, margin: s.best.margin },
     at: flipsState.at, error: flipsError };
 }

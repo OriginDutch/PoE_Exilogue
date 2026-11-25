@@ -8,10 +8,11 @@
 //  - Rate limits: on 429 or a server error everything stops until Retry-After (or 15 minutes) has passed.
 const fs = require('fs');
 const path = require('path');
-const { summarizeHour, aggregate } = require('../core/cxprices');
+const { summarizeHour, aggregate, recent } = require('../core/cxprices');
 
 const URL = ts => `https://web.poecdn.com/api/currency-exchange/${ts}`;
 const HOURS = 12;
+const RECENT = 3;            // hours used to check a flip against real trades
 const MAX_BYTES = 8 * 1024 * 1024;
 const GAP_MS = 3000;          // between two downloads
 const RETRY_MS = 15 * 60e3;   // an hour that wasn't published yet is tried again after this
@@ -67,7 +68,7 @@ class CxHistory {
     try {
       if (league !== this.league) { this.league = league; this.hours.clear(); this.failed.clear(); this.agg = null; this._loadDisk(); this.rev++; }
       const want = CxHistory.wanted();
-      for (const ts of [...this.hours.keys()]) if (!want.includes(ts)) { this.hours.delete(ts); try { fs.unlinkSync(this._file(ts)); } catch { /* gone */ } this.agg = null; }
+      for (const ts of [...this.hours.keys()]) if (!want.includes(ts)) { this.hours.delete(ts); try { fs.unlinkSync(this._file(ts)); } catch { /* gone */ } this.agg = null; this.rev++; }
       let first = true;
       for (const ts of want) { // newest first
         if (this.hours.has(ts)) continue;
@@ -94,7 +95,10 @@ class CxHistory {
   get() {
     const hs = [...this.hours.entries()].filter(([, s]) => s.rate && Object.keys(s.items).length);
     if (!hs.length) return null;
-    if (!this.agg) this.agg = { prices: aggregate(hs.map(([, s]) => s)), hours: hs.length, newest: Math.max(...hs.map(([ts]) => ts)) * 1000 };
+    if (!this.agg) {
+      const newest3 = hs.sort((a, b) => b[0] - a[0]).slice(0, RECENT).map(([, s]) => s);
+      this.agg = { prices: aggregate(hs.map(([, s]) => s)), recent: recent(newest3), hours: hs.length, newest: Math.max(...hs.map(([ts]) => ts)) * 1000 };
+    }
     return this.agg;
   }
 }

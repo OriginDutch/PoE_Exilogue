@@ -65,4 +65,47 @@ function compare(cx, name) {
     perDivine: e.divEach > 0 ? 1 / e.divEach : null, divPerHour: e.divPerHour, hours: e.hours, divHours: e.divHours };
 }
 
-module.exports = { summarizeHour, aggregate, compare, nameOf, CHAOS, DIVINE, THIN };
+// The last few hours, both markets together: what an item really traded for in a typical hour (median over the hours
+// of chaos-equivalent traded / items traded; one big trade can't skew it) and how many traded per hour.
+// { items: { name: { price, perHour } }, rate (median divine rate), hours }
+function recent(hours) {
+  const hs = (hours || []).filter(h => h && h.items && h.rate > 0);
+  const acc = {};
+  for (const h of hs) for (const [name, e] of Object.entries(h.items)) {
+    const n = (e.ci || 0) + (e.di || 0), c = (e.cc || 0) + (e.dd || 0) * h.rate;
+    if (!(n > 0 && c > 0)) continue;
+    const a = acc[name] = acc[name] || { n: 0, p: [] };
+    a.n += n; a.p.push(c / n);
+  }
+  const out = {};
+  for (const [name, a] of Object.entries(acc)) out[name] = { price: median(a.p), perHour: a.n / hs.length };
+  const rate = median(hs.map(h => h.rate));
+  return { items: out, rate, hours: hs.length };
+}
+
+// A flip checked against real trades: margin with recent exchange prices (same 3% spread as Easyflips), and how many
+// flips an hour fit in SHARE of what trades on each side. status: confirmed | unconfirmed | unchecked (an item isn't on
+// the exchange, e.g. uniques). flip: an Easyflips flip ({ in: [{ name, n }], out: { name, n } }).
+const SHARE = 0.10;
+// known: names the exchange has at all (the 12-hour data). An exchange item without trades in the recent hours makes
+// the flip 'unconfirmed' (reason 'quiet'); an item that isn't on the exchange makes it 'unchecked' (reason 'absent').
+function check(flip, rec, { spread = 0.03, minMargin = 10, known = null } = {}) {
+  if (!rec || !rec.hours) return { status: 'unchecked', reason: 'nodata' };
+  const priceOf = name => (name === 'Chaos Orb' ? { price: 1, perHour: null } : name === 'Divine Orb' && rec.rate ? { price: rec.rate, perHour: null } : rec.items[name] || null);
+  const names = [...flip.in.map(x => x.name), flip.out.name].filter(n => !priceOf(n));
+  if (names.length) {
+    const quiet = known && names.every(n => known[n]);
+    return quiet ? { status: 'unconfirmed', reason: 'quiet', hours: rec.hours, margin: null, perHour: null } : { status: 'unchecked', reason: 'absent' };
+  }
+  const ins = flip.in.map(x => ({ x, p: priceOf(x.name) })), out = priceOf(flip.out.name);
+  const money = flip.out.name === 'Divine Orb' || flip.out.name === 'Chaos Orb';
+  // Owned inputs (only with "Count what I own"): at their sell price, as in Easyflips.
+  const own = Math.min(flip.own || 0, flip.in[0] ? flip.in[0].n : 0);
+  const cost = ins.reduce((t, i) => t + i.x.n * i.p.price * (1 + spread), 0) - own * ins[0].p.price * 2 * spread;
+  const get = flip.out.n * out.price * (money ? 1 : 1 - spread);
+  const margin = cost > 0 ? (100 * (get - cost)) / cost : 0;
+  const caps = [...ins.map(i => (i.p.perHour ? (i.p.perHour * SHARE) / i.x.n : null)), out.perHour ? (out.perHour * SHARE) / flip.out.n : null].filter(v => v != null);
+  return { status: margin >= minMargin ? 'confirmed' : 'unconfirmed', margin, perHour: caps.length ? Math.floor(Math.min(...caps)) : null, hours: rec.hours };
+}
+
+module.exports = { summarizeHour, aggregate, compare, recent, check, nameOf, CHAOS, DIVINE, THIN, SHARE };

@@ -40,9 +40,13 @@
     if (f.rerolls) out.push('<span class="ef-flag roll">Result has new rolls</span>');
     if (f.own) out.push(`<span class="ef-flag own">You own ${f.own}/${f.in[0].n}</span>`);
     if (f.highStakes) out.push('<span class="ef-flag roll">High stakes</span>');
+    if (realFlag(f)) out.push(realFlag(f));
     return out.join('');
   }
-  const WHY = { margin: 'margin below your limit', thin: 'thin volume', maxDiv: 'over your divine limit', divine: 'divine price unsure', loss: 'no profit' };
+  const WHY = { margin: 'margin below your limit', thin: 'thin volume', maxDiv: 'over your divine limit', divine: 'divine price unsure', loss: 'no profit', unconfirmed: 'not confirmed by real trades' };
+  // GGG's real trades of the last hours: confirmed flips get a badge; how many flips an hour fit (10% of what trades).
+  const realFlag = f => (f.real && f.real.reason === 'quiet' ? '<span class="ef-flag warn">No real trades lately</span>' : f.real && f.real.status === 'confirmed' ? `<span class="ef-flag ok">✓ Real trades: ${pct(f.real.margin)}</span>` : f.real && f.real.status === 'unconfirmed' ? `<span class="ef-flag warn">Real trades: ${pct(f.real.margin)}</span>` : '');
+  const capText = f => (f.real && f.real.perHour != null ? (f.real.perHour < 1 ? 'under 1 flip an hour fits' : `≈ ${f.real.perHour.toLocaleString('en-US')} flips an hour fit`) : '');
   const volText = f => (f.inVol == null ? 'no volume data' : `${f.in[0].name} trades ≈ ${fmt(f.inVol)}c an hour`);
   const sub = f => `${f.in[0].n} → ${f.out.n > 1 ? f.out.n + ' × ' : ''}${label(f)}${f.kind === 'essence' && f.upgrades === 2 ? ' · 2 upgrades' : ''}`;
   // Same text with an essence's tier word in capitals and colour (titles on cards and in the popup).
@@ -79,7 +83,7 @@
       <div class="ef-nums"><div><span>You pay</span><b>${money(f, f.payNow)}</b>${f.own ? `<small>for ${f.in[0].n - f.own} more</small>` : ''}</div><div><span>You get</span><b>${money(f, f.get)}</b></div>
         <div><span>Profit</span><b class="${f.profit > 0 ? 'good' : 'bad'}">${signed(f, f.profit)}</b><small>${pct(f.margin)}</small></div></div>
       ${cxRow(f)}
-      <div class="sub ef-foot">${E.esc(volText(f))}${f.below && reasons.length ? ' · ' + reasons.join(', ') : ''}${hidden ? ' · hidden' : ''}</div></div>`;
+      <div class="sub ef-foot">${E.esc([volText(f), capText(f)].filter(Boolean).join(' · '))}${f.below && reasons.length ? ' · ' + reasons.join(', ') : ''}${hidden ? ' · hidden' : ''}</div></div>`;
   }
 
   function list(d) {
@@ -121,7 +125,7 @@
           <button class="ef-chip${u.showHidden ? ' on' : ''}" data-ef="hidden" aria-pressed="${!!u.showHidden}" ${nHidden || u.showHidden ? '' : 'disabled'}>Hidden flips (${nHidden})</button></div>`;
       const grid = shown.length ? `<div class="ef-grid">${shown.map(f => card(f, u.showHidden)).join('')}</div>`
         : `<section class="box"><div class="empty"><b>${u.showHidden ? 'No hidden flips' : 'No flips here right now'}</b><span>${u.showHidden ? '' : 'Prices move all the time: try again later, or loosen your limits.'}</span></div></section>`;
-      return head + filters + grid + `<div class="note">${ic.info()}<span>Sorted by margin, flips marked “verify” after the rest. Buy/Sell rows: the same item in the exchange's chaos market and divine market (typical hourly price over the last ${hrs()} hours, GGG's history; the better one is bold, not when the divine side barely traded). Volume is poe.ninja's chaos traded per hour; under 1,000c an hour counts as thin. Uniques: bench six-link (needs item level 50+, not corrupted) and Breach blessings (sell the unique and the blessing to a vendor).${d.partial ? ' Some poe.ninja lists could not be loaded.' : ''}</span></div>`;
+      return head + filters + grid + `<div class="note">${ic.info()}<span>Sorted by margin, flips marked “verify” after the rest. Flips that real exchange trades of the last 3 hours don't confirm are greyed out ("not confirmed by real trades"); “flips an hour fit” = 10% of what trades per hour on the thinner side. Buy/Sell rows: the same item in the exchange's chaos market and divine market (typical hourly price over the last ${hrs()} hours, GGG's history; the better one is bold, not when the divine side barely traded). Volume is poe.ninja's chaos traded per hour; under 1,000c an hour counts as thin. Uniques: bench six-link (needs item level 50+, not corrupted) and Breach blessings (sell the unique and the blessing to a vendor).${d.partial ? ' Some poe.ninja lists could not be loaded.' : ''}</span></div>`;
     },
     mount(el) {
       load(false);
@@ -223,7 +227,11 @@
       <div class="ef-qty"><span>How many times</span><button class="btn i sm" data-efd="n" data-d="-1" aria-label="Fewer" ${n <= 1 ? 'disabled' : ''}>−</button><b aria-live="polite">${n}×</b><button class="btn i sm" data-efd="n" data-d="1" aria-label="More">+</button><span class="spacer"></span><span class="sub">${E.esc(volText(f))}</span></div>
       <div class="ef-nums big"><div><span>You pay</span><b>${money(f, payNow)}</b>${sc.own ? `<small>for ${buyN} more</small>` : ''}</div><div><span>You get</span><b>${money(f, f.get * n)}</b></div><div><span>Profit</span><b class="${profit > 0 ? 'good' : 'bad'}">${signed(f, profit)}</b><small>${pct(sc.margin)}</small></div></div>
       ${bar('Buying', sc.buyShare)}${bar('Selling', sc.sellShare)}
-      ${data() && data().cx ? `<div class="ef-cxbox"><b>Exchange markets</b> <span class="sub">GGG, last ${data().cx.hours} h: typical hourly price per item, in chaos</span>${cxRow(f)}</div>` : ''}
+      ${data() && data().cx ? `<div class="ef-cxbox"><b>Exchange markets</b> <span class="sub">GGG, last ${data().cx.hours} h: typical hourly price per item, in chaos</span>${cxRow(f)}
+        ${!f.real || f.real.reason === 'nodata' ? '<div class="sub">No recent exchange hours yet: not checked against real trades.</div>'
+          : f.real.reason === 'absent' ? '<div class="sub">Not (all) on the exchange: not checked against real trades.</div>'
+          : f.real.reason === 'quiet' ? `<div class="sub">No real trades in the last ${f.real.hours} h for part of this flip: not confirmed.</div>`
+          : `<div class="sub">Real trades, last ${f.real.hours} h: margin <b>${pct(f.real.margin)}</b>${f.real.status === 'confirmed' ? '' : ' (below your limit)'}${f.real.perHour != null ? ` · ${capText(f)} (10% of what trades on the thinner side)` : ''}.</div>`}</div>` : ''}
       ${div && payNow > 20 * div ? `<div class="ef-risk">You tie up ${D(payNow)}. A 1% move in the reward's price is ${C(f.getAvg * n * 0.01)}.</div>` : ''}
       <ol class="ef-steps">${steps(f)}</ol>
       ${sc.own ? `<p class="sub">Profit counts your ${sc.own} owned ${E.esc(m.name)} at their sell price (3% under poe.ninja), because selling them is your alternative.</p>` : ''}

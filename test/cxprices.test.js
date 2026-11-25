@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { summarizeHour, aggregate, compare, nameOf, CHAOS, DIVINE } = require('../src/core/cxprices');
+const { summarizeHour, aggregate, compare, recent, check, nameOf, CHAOS, DIVINE } = require('../src/core/cxprices');
 
 const ZEAL = 'Metadata/Items/Currency/CurrencyEssenceZeal4';
 const mk = (league, a, b, va, vb) => ({ league, market_id: `${a}|${b}`, market_pair: [a, b], volume_traded: { [a]: va, [b]: vb } });
@@ -74,4 +74,24 @@ test('cx: only complete hours are kept; a 429 stops the round', async () => {
   assert.equal(cx.hours.size, 1);
   assert.ok(cx.pauseUntil > Date.now() + 50e3);
   assert.equal(fs.readdirSync(dir).length, 1);
+});
+
+test('cx: recent real prices over both markets, and a flip checked against them', () => {
+  const h = { rate: 200, items: { A: { ci: 30, cc: 30, di: 0, dd: 0 }, B: { ci: 10, cc: 40, di: 10, dd: 0.25 } } };
+  const r = recent([h, h]);
+  assert.equal(r.hours, 2); assert.equal(r.rate, 200);
+  assert.ok(Math.abs(r.items.A.price - 1) < 1e-9); assert.equal(r.items.A.perHour, 30);
+  assert.ok(Math.abs(r.items.B.price - (40 + 50) / 20) < 1e-9); assert.equal(r.items.B.perHour, 20);
+  // Typical hour, not the average of all trades: one huge hour doesn't drag the price.
+  const big = { rate: 200, items: { A: { ci: 1000, cc: 5000, di: 0, dd: 0 } } };
+  assert.equal(recent([h, h, big]).items.A.price, 1);
+  const flip = { in: [{ name: 'A', n: 3 }], out: { name: 'B', n: 1 } };
+  const c = check(flip, r, { spread: 0.03, minMargin: 10 });
+  assert.equal(c.status, 'confirmed'); assert.ok(Math.abs(c.margin - (100 * (4.5 * 0.97 - 3 * 1.03) / (3 * 1.03))) < 1e-9);
+  assert.equal(c.perHour, Math.floor(Math.min(30 * 0.1 / 3, 20 * 0.1)));
+  assert.equal(check(flip, r, { minMargin: 60 }).status, 'unconfirmed');
+  assert.equal(check({ in: [{ name: 'Z', n: 1 }], out: { name: 'B', n: 1 } }, r).status, 'unchecked');
+  assert.deepEqual([check({ in: [{ name: 'Z', n: 1 }], out: { name: 'B', n: 1 } }, r, { known: { Z: {} } }).status, check({ in: [{ name: 'Z', n: 1 }], out: { name: 'B', n: 1 } }, r, { known: { Z: {} } }).reason], ['unconfirmed', 'quiet']);
+  assert.equal(check({ in: [{ name: 'A', n: 3 }], out: { name: 'Divine Orb', n: 1 } }, r).status, 'confirmed');
+  assert.equal(check(flip, null).status, 'unchecked');
 });
