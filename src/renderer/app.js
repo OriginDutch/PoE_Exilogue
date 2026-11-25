@@ -184,7 +184,14 @@
       if (await save({ launch: { custom } })) { ui.lnewName = ''; ui.lnewTarget = ''; render(true); }
     },
     'apt': async () => { const r = await ej.launch('apt'); if (r && !r.ok) E.toastError(r.error); },
-    'update-install': async () => { const r = await ej.updateInstall(); if (r && !r.ok) E.toastError(r.error); },
+    'update-install': async () => {
+      let r = await ej.updateInstall(false);
+      if (r && r.needConfirm) {
+        if (!(await E.confirm({ title: 'Update while the game runs?', body: 'Exilogue closes for a few seconds to install. Overlays and hotkeys are gone until it starts again; it catches up on Client.txt by itself.', ok: 'Update now' }))) return;
+        r = await ej.updateInstall(true);
+      }
+      if (r && !r.ok && r.error) E.toastError(r.error);
+    },
     // Settings › About & updates: 5 clicks on the version within 3 s reveal the release channel.
     'ver-tap': () => {
       const now = Date.now(); ui.verTaps = (ui.verTaps || []).filter(t => now - t < 3000).concat(now);

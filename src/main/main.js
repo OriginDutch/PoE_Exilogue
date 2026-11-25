@@ -347,7 +347,7 @@ function setGameRunning(running) {
   if (running === gameRunning) return;
   gameRunning = running;
   if (!hotkeysPaused) registerHotkeys(); // taken while the game runs, released when it closes (binds re-read too)
-  // A downloaded update installs when Exilogue closes, but never while the game runs.
+  // A downloaded update installs when Exilogue closes, but not while the game runs (Restart and update can, after a confirm).
   syncInstallOnQuit();
   if (caughtUp && tracker) tracker.setPaused(!running, Date.now());
   updateOverlayVisibility();
@@ -1254,6 +1254,7 @@ function applyChannel() {
 }
 // Closing Exilogue with an update ready: look for the game once more first (the regular check can be a minute old).
 let quitChecked = false;
+let installing = false;
 app.on('before-quit', e => {
   if (quitChecked || !autoUpdater || updateState.state !== 'ready' || process.platform !== 'win32') return;
   e.preventDefault();
@@ -1819,11 +1820,15 @@ function setupIpc() {
   ipcMain.handle('diag:copy', () => { clipboard.writeText(diagnostics()); return true; });
   ipcMain.handle('storage:open', async () => { const err = await shell.openPath(app.getPath('userData')); return err ? { ok: false, error: err } : { ok: true }; });
   ipcMain.handle('break:taken', () => { takeBreak(); return true; });
-  ipcMain.handle('update:install', async () => {
-    if (!autoUpdater || updateState.state !== 'ready') return { ok: false, error: 'No update ready' };
+  // inGame: the user confirmed installing while the game runs (Exilogue is gone for a few seconds, then starts again).
+  // Closing Exilogue during play still doesn't install by itself.
+  ipcMain.handle('update:install', async (_e, inGame) => {
+    if (!autoUpdater || updateState.state !== 'ready' || installBlocked) return { ok: false, error: 'No update ready' };
+    if (installing) return { ok: true };
     await checkGameProcess(); // the regular check can be a minute old
-    if (gameRunning) return { ok: false, error: 'Close the game first; it installs by itself when Exilogue closes.' };
+    if (gameRunning && !inGame) return { ok: false, needConfirm: true };
     flushLeague({ force: true });
+    installing = true; // a second click must not start the installer twice
     quitChecked = true; // just checked: the before-quit check must not hold this quit up
     setImmediate(() => autoUpdater.quitAndInstall(true, true)); // silent install, then start Exilogue again
     return { ok: true };

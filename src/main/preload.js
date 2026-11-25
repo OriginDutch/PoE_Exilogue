@@ -35,7 +35,7 @@ contextBridge.exposeInMainWorld('ej', {
   listBackups: () => ipcRenderer.invoke('backups:list'),
   storage: () => ipcRenderer.invoke('storage:get'),
   breakTaken: () => ipcRenderer.invoke('break:taken'),
-  updateInstall: () => ipcRenderer.invoke('update:install'),
+  updateInstall: inGame => ipcRenderer.invoke('update:install', !!inGame),
   updateCheck: () => ipcRenderer.invoke('update:check'),
   flips: force => ipcRenderer.invoke('flips:get', !!force),
   icons: () => ipcRenderer.invoke('icons:get'),
