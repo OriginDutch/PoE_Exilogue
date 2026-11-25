@@ -656,3 +656,5 @@ html.no-motion .view{animation:none}
 .ef-mk{color:var(--tx2)}.ef-mk.on{color:var(--tx);font-weight:700}
 .ef-mk.on::before{content:'› ';color:var(--ok)}
 .ef-cxbox{display:flex;flex-direction:column;gap:6px;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px}
+.ef-sth{font-size:14.5px}
+.ef-tier{color:var(--live);letter-spacing:.03em}

@@ -80,7 +80,7 @@ const DEFAULT_CONFIG = {
   // Release channel: stable, or test (pre-releases first). `shown`: the hidden switch was revealed (5 clicks on the version).
   updates: { channel: 'stable', shown: false },
   // Easyflips: limits (margin %, most divines tied up), what is shown, and flips hidden by hand (ids).
-  easyflips: { minMargin: 10, maxDiv: 50, showBelow: true, highStakes: false, hidden: [] },
+  easyflips: { minMargin: 10, maxDiv: 50, showBelow: true, highStakes: false, countOwned: false, hidden: [] },
   // Lifetime disk counters (bytes), kept here so a rebuild, restore or new league doesn't reset them.
   io: { since: null, dbWritten: 0, backupWritten: 0, configWritten: 0, iconWritten: 0, wealthWritten: 0, logRead: 0, otherRead: 0 },
 };
@@ -152,7 +152,7 @@ function sanitizeConfig() {
   c.neversink = { lastSyncedTag: c.neversink && typeof c.neversink.lastSyncedTag === 'string' ? c.neversink.lastSyncedTag : null, syncedAt: c.neversink && Number.isFinite(c.neversink.syncedAt) ? c.neversink.syncedAt : null, remind: !(c.neversink && c.neversink.remind === false) };
   for (const [id, sz] of Object.entries(c.layout.sizes || {})) if (!SIZES.includes(sz)) delete c.layout.sizes[id];
   { const e = c.easyflips || {}; const n = (v, lo, hi, d) => { const x = Number(v); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, Math.round(x))) : d; };
-    c.easyflips = { minMargin: n(e.minMargin, 0, 500, 10), maxDiv: n(e.maxDiv, 1, 100000, 50), showBelow: e.showBelow !== false, highStakes: !!e.highStakes,
+    c.easyflips = { minMargin: n(e.minMargin, 0, 500, 10), maxDiv: n(e.maxDiv, 1, 100000, 50), showBelow: e.showBelow !== false, highStakes: !!e.highStakes, countOwned: !!e.countOwned,
       hidden: [...new Set((Array.isArray(e.hidden) ? e.hidden : []).filter(x => typeof x === 'string' && /^[a-z0-9-]{1,120}$/.test(x)))].slice(0, 300) }; }
   c.updates = { channel: c.updates && c.updates.channel === 'test' ? 'test' : 'stable', shown: !!(c.updates && (c.updates.shown || c.updates.channel === 'test')) };
   delete c.links; delete c.background;
@@ -1155,7 +1155,8 @@ function flipsRefresh(force = false) {
     try {
       const d = await ninja.easyflipData(config.data.league.name, force);
       const e = config.data.easyflips;
-      const r = easyflips.compute({ lines: d.lines, uniques: d.uniques, owned: ownedCounts(),
+      // Market flips only, unless 'Count what I own' is on.
+      const r = easyflips.compute({ lines: d.lines, uniques: d.uniques, owned: e.countOwned ? ownedCounts() : {},
         opts: { minMargin: e.minMargin, maxDiv: e.maxDiv, divineAlt: d.divineAlt } });
       flipsState = { ...r, changedAt: d.changedAt, checkedAt: d.checkedAt, partial: d.partial, at: Date.now() };
       flipsError = null;
@@ -1217,7 +1218,16 @@ function startUpdater() {
     setImmediate(syncInstallOnQuit);
     set(installBlocked ? { state: 'none', next: null, pct: 0 } : { state: 'ready', next: v });
   });
-  autoUpdater.on('error', e => set({ state: 'error', error: String((e && e.message) || e).split('\n')[0].slice(0, 160) }));
+  // A release GitHub already lists but whose files are still uploading (or not yet visible) has no latest.yml:
+  // check again in 2 minutes instead of waiting for the next round (at most 5 times in a row).
+  let ymlRetries = 0, ymlTimer = null;
+  autoUpdater.on('error', e => {
+    const msg = String((e && e.message) || e);
+    set({ state: 'error', error: msg.split('\n')[0].slice(0, 160) });
+    if (/latest\.yml/i.test(msg) && ymlRetries < 5 && !ymlTimer) { ymlRetries++; ymlTimer = setTimeout(() => { ymlTimer = null; check(); }, 2 * 60e3); }
+  });
+  autoUpdater.on('update-available', () => { ymlRetries = 0; });
+  autoUpdater.on('update-not-available', () => { ymlRetries = 0; });
   const check = () => { if (updateState.state !== 'ready' && updateState.state !== 'downloading') autoUpdater.checkForUpdates().catch(() => {}); };
   setTimeout(check, 15 * 1000);
   setInterval(check, 4 * 60 * 60 * 1000);
@@ -1784,7 +1794,7 @@ function setupIpc() {
     if (patch.paths) { refreshPaths(); if (iconRefresh) iconRefresh(); }
     if (patch.overlay && 'enabled' in patch.overlay) setOverlayEnabled(config.data.overlay.enabled);
     if (patch.essences && !config.data.essences.enabled) hideEssences();
-    if (patch.easyflips && flipsState && ('minMargin' in patch.easyflips || 'maxDiv' in patch.easyflips)) flipsRefresh();
+    if (patch.easyflips && flipsState && ('minMargin' in patch.easyflips || 'maxDiv' in patch.easyflips || 'countOwned' in patch.easyflips)) flipsRefresh();
     if (patch.updates && 'channel' in patch.updates) { applyChannel(); if (updateCheckNow) setTimeout(updateCheckNow, 500); }
     // Stats are wiped before the new path/start is saved: a crash in between leaves old stats with the old config.
     if (JSON.stringify([config.data.paths.clientTxt, config.data.league.start]) !== before) {

@@ -7,6 +7,7 @@
   const st = () => EX.state, ui = () => EX.ui;
   const SPREAD = 0.03;
   const CATS = [['all', 'All'], ['essence', 'Essences'], ['card', 'Div cards'], ['splinter', 'Splinters & shards'], ['unique', 'Uniques'], ['oil', 'Oils'], ['own', 'From what you own']];
+  const cats = () => CATS.filter(([k]) => k !== 'own' || cfgE().countOwned);
   const KIND = { essence: 'Essence', card: 'Div card', splinter: 'Splinter', shard: 'Shard', unique: 'Unique', oil: 'Oil' };
 
   const slug = n => ('ef-' + String(n).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')).slice(0, 60);
@@ -44,6 +45,8 @@
   const WHY = { margin: 'margin below your limit', thin: 'thin volume', maxDiv: 'over your divine limit', divine: 'divine price unsure', loss: 'no profit' };
   const volText = f => (f.inVol == null ? 'no volume data' : `${f.in[0].name} trades ≈ ${fmt(f.inVol)}c an hour`);
   const sub = f => `${f.in[0].n} → ${f.out.n > 1 ? f.out.n + ' × ' : ''}${label(f)}${f.kind === 'essence' && f.upgrades === 2 ? ' · 2 upgrades' : ''}`;
+  // Same text with an essence's tier word in capitals and colour (titles on cards and in the popup).
+  const tierHtml = text => String(text).split(/(\b(?:Whispering|Muttering|Weeping|Wailing|Screaming|Shrieking|Deafening)\b)/).map((p, i) => (i % 2 ? `<span class="ef-tier">${p.toUpperCase()}</span>` : E.esc(p))).join('');
 
   // GGG's exchange, last 12 hours: the same item's price in the chaos market and in the divine market (in chaos).
   // side 'buy': lower is better; 'sell': higher is better. The better market is bold.
@@ -63,7 +66,7 @@
   const cxRow = f => {
     if (!(data() && data().cx)) return '';
     const rows = [has(f.cxIn) ? `<div><span class="ef-cxl">Buy</span>${cxPair(f.cxIn, 'buy')}</div>` : '',
-      has(f.cxOut) && f.out.name !== 'Divine Orb' ? `<div><span class="ef-cxl">Sell</span>${cxPair(f.cxOut, 'sell')}</div>` : ''].join('');
+      has(f.cxOut) && f.out.name !== 'Divine Orb' && f.out.name !== 'Chaos Orb' ? `<div><span class="ef-cxl">Sell</span>${cxPair(f.cxOut, 'sell')}</div>` : ''].join('');
     return rows ? `<div class="ef-cx">${rows}</div>` : '';
   };
   const hrs = () => (data() && data().cx ? data().cx.hours : 12);
@@ -71,7 +74,7 @@
   function card(f, hidden) {
     const reasons = f.reasons.map(r => WHY[r]).filter(Boolean);
     return `<div class="ef-card${f.below ? ' dim' : ''}" role="button" tabindex="0" data-ef="open" data-id="${f.id}">
-      <div class="ef-rec">${recipe(f, 46)}<div class="ef-nm"><span class="ef-kind">${KIND[f.kind] || ''}</span><b>${E.esc(f.in[0].name)}</b><span class="sub">${E.esc(sub(f))}</span></div></div>
+      <div class="ef-rec">${recipe(f, 46)}<div class="ef-nm"><span class="ef-kind">${KIND[f.kind] || ''}</span><b>${tierHtml(f.in[0].name)}</b><span class="sub">${tierHtml(sub(f))}</span></div></div>
       ${flags(f) ? `<div class="ef-flags">${flags(f)}</div>` : ''}
       <div class="ef-nums"><div><span>You pay</span><b>${money(f, f.payNow)}</b>${f.own ? `<small>for ${f.in[0].n - f.own} more</small>` : ''}</div><div><span>You get</span><b>${money(f, f.get)}</b></div>
         <div><span>Profit</span><b class="${f.profit > 0 ? 'good' : 'bad'}">${signed(f, f.profit)}</b><small>${pct(f.margin)}</small></div></div>
@@ -81,7 +84,7 @@
 
   function list(d) {
     const e = cfgE(), u = ui().ef, hidden = new Set(e.hidden);
-    const cat = u.cat || 'all';
+    const cat = u.cat === 'own' && !e.countOwned ? 'all' : (u.cat || 'all');
     return d.flips.filter(f => {
       if (u.showHidden ? !hidden.has(f.id) : hidden.has(f.id)) return false;
       if (!e.highStakes && f.highStakes) return false;
@@ -109,11 +112,12 @@
       if (!d) return head + `<section class="box"><div class="empty"><b>${u.error ? 'No prices' : 'Loading prices from poe.ninja…'}</b>${u.error ? `<span>${E.esc(u.error)}</span>` : ''}</div></section>`;
       const shown = list(d);
       const nHidden = d.flips.filter(f => e.hidden.includes(f.id)).length;
-      const filters = `<div class="ef-bar" role="group" aria-label="Show">${CATS.map(([k, l]) => `<button class="ef-chip${(u.cat || 'all') === k ? ' on' : ''}" data-ef="cat" data-cat="${k}" aria-pressed="${(u.cat || 'all') === k}">${E.esc(l)}</button>`).join('')}</div>
+      const filters = `<div class="ef-bar" role="group" aria-label="Show">${cats().map(([k, l]) => `<button class="ef-chip${(u.cat || 'all') === k ? ' on' : ''}" data-ef="cat" data-cat="${k}" aria-pressed="${(u.cat || 'all') === k}">${E.esc(l)}</button>`).join('')}</div>
         <div class="ef-bar">${numField('minMargin', 'Min margin', '%', e.minMargin)}${numField('maxDiv', 'Max', 'divine', e.maxDiv)}
           <span class="spacer"></span>
           <button class="ef-chip${e.showBelow ? ' on' : ''}" data-ef="tog" data-k="showBelow" aria-pressed="${e.showBelow}">Show below limits</button>
           <button class="ef-chip${e.highStakes ? ' on' : ''}" data-ef="tog" data-k="highStakes" aria-pressed="${e.highStakes}">High stakes</button>
+          <button class="ef-chip${e.countOwned ? ' on' : ''}" data-ef="tog" data-k="countOwned" aria-pressed="${e.countOwned}" title="Use your newest Wealthy Exile export: flips you can partly do from your stash">Count what I own</button>
           <button class="ef-chip${u.showHidden ? ' on' : ''}" data-ef="hidden" aria-pressed="${!!u.showHidden}" ${nHidden || u.showHidden ? '' : 'disabled'}>Hidden flips (${nHidden})</button></div>`;
       const grid = shown.length ? `<div class="ef-grid">${shown.map(f => card(f, u.showHidden)).join('')}</div>`
         : `<section class="box"><div class="empty"><b>${u.showHidden ? 'No hidden flips' : 'No flips here right now'}</b><span>${u.showHidden ? '' : 'Prices move all the time: try again later, or loosen your limits.'}</span></div></section>`;
@@ -155,18 +159,20 @@
     if (a === 'refresh') return load(true);
     if (a === 'cat') { u.cat = t.dataset.cat; return redraw(); }
     if (a === 'hidden') { u.showHidden = !u.showHidden; return redraw(); }
-    if (a === 'tog') return EX.save({ easyflips: { [t.dataset.k]: !cfgE()[t.dataset.k] } }).then(redraw);
+    if (a === 'tog') return EX.save({ easyflips: { [t.dataset.k]: !cfgE()[t.dataset.k] } }).then(() => { if (t.dataset.k === 'countOwned') { if (u.cat === 'own') u.cat = 'all'; load(true); } else redraw(); });
   }
 
   // ---------- the steps popup ----------
   let dlg = null;
-  function steps(f, n) {
-    const m = f.in[0], sc = window.EasyflipsCore.scale(f, n, SPREAD), buyN = sc.buyN;
-    const most = `Pay at most ${fmt(f.payAtMost)}c each: that still leaves your ${cfgE().minMargin}% margin.`;
+  // Steps per item, not per amount: you decide how many. Names are escaped here; the tier word of an essence (the
+  // only part that tells Screaming, Shrieking and Deafening apart) is in capitals and coloured, so buy and sell can't mix up.
+  const TIER = /^(Whispering|Muttering|Weeping|Wailing|Screaming|Shrieking|Deafening)( .*)$/;
+  const nm = name => { const m = TIER.exec(name); return m ? `<b class="ef-tier">${m[1].toUpperCase()}</b>${E.esc(m[2])}` : `<b>${E.esc(name)}</b>`; };
+  function steps(f) {
+    const m = f.in[0];
     const btns = (name, unique) => `<button class="btn sm" data-efd="copy" data-name="${E.esc(name)}">Copy name</button><button class="btn sm q" data-efd="trade" data-name="${E.esc(name)}" data-unique="${unique ? 1 : 0}">Trade site ${ic.ext()}</button>`;
-    const buyBtns = btns(m.name, f.kind === 'unique');
-    const sellBtns = `<button class="btn sm" data-efd="copy" data-name="${E.esc(f.out.name)}">Copy name</button>`;
-    // Which exchange market to use, from GGG's last 12 hours (text only; the HTML line is added below the step).
+    const copy = name => `<button class="btn sm" data-efd="copy" data-name="${E.esc(name)}">Copy name</button>`;
+    // Which exchange market to use, from GGG's last hours.
     const mkt = (c, side) => {
       if (!advise(c, side)) return '';
       const best = side === 'buy' ? c.buy : c.sell, by = gap(c, side);
@@ -174,20 +180,29 @@
       return side === 'buy' ? ` Over the last ${hrs()} h it was ${by}% cheaper to buy with ${best === 'chaos' ? 'chaos' : 'divines' + batch}.`
         : ` Over the last ${hrs()} h it paid ${by}% more to sell for ${best === 'chaos' ? 'chaos' : 'divines' + batch}.`;
     };
-    const buy = [m.name, m.n, sc.own ? `Buy ${buyN} more × ${m.name}` : `Buy ${buyN} × ${m.name}`, (sc.own ? `You already own ${sc.own}. ` : '') + most + mkt(f.cxIn, 'buy'), buyBtns];
-    // Bench currency is counted in what you pay; a blessing has to be bought like the unique.
-    const extra = f.in.slice(1).map(x => [x.name, x.n, x.cost ? `Have ${(x.n * n).toLocaleString('en-US')} × ${x.name}` : `Buy ${(x.n * n).toLocaleString('en-US')} × ${x.name}`, 'Counted in what you pay.', x.cost ? '' : btns(x.name, false)]);
-    const sellEach = f.out.n > 1 ? `${fmt(f.get / f.out.n)}c each` : `${fmt(f.get)}c`;
-    const sell = [f.out.name, f.out.n, `Sell ${(f.out.n * n).toLocaleString('en-US')} × ${label(f)}`, f.out.name === 'Divine Orb' ? 'Divine Orbs are money: nothing to sell.' : `Around ${sellEach} after the spread.` + mkt(f.cxOut, 'sell'), f.out.name === 'Divine Orb' ? '' : sellBtns];
+    // Break-even sell price per item: at the expected buy price (poe.ninja + 3%) and at step 1's "pay at most".
+    const other = f.pay - m.unit * m.n * (1 + SPREAD);
+    const paidExp = m.unit * (1 + SPREAD);
+    const sellMin = f.pay / f.out.n, sellMinMax = (f.payAtMost * m.n + other) / f.out.n;
+    const rows = [];
+    rows.push([m.name, 1, `Buy ${nm(m.name)}${f.kind === 'unique' && f.sixLink ? ' (unlinked)' : ''}`,
+      E.esc((f.own ? `You already own ${f.own}. ` : '') + `Pay at most ${fmt(f.payAtMost)}c each.` + mkt(f.cxIn, 'buy')), btns(m.name, f.kind === 'unique')]);
+    for (const x of f.in.slice(1)) rows.push(x.cost
+      ? [x.name, 1, `Have ${x.n.toLocaleString('en-US')} ${nm(x.name)} per item`, 'Counted in what you pay.', '']
+      : [x.name, 1, `Buy ${nm(x.name)}`, `One per ${E.esc(m.name)}. Counted in what you pay.`, btns(x.name, false)]);
     let conv;
-    if (f.kind === 'essence') conv = f.upgrades === 2 ? ['Upgrade twice in your essence tab', `Press Upgrade: ${m.n * n} → ${3 * n} of the tier between, then again → ${n}.`] : ['Upgrade in your essence tab', `Put them in the essence tab and press Upgrade: every 3 become 1 ${f.out.name}.`];
-    else if (f.kind === 'card') conv = [n > 1 ? `Turn in ${n} full sets` : 'Turn in the full set', 'At Lilly Roth in your hideout, or Tasuni in Highgate.'];
-    else if (f.kind === 'oil') conv = ['Combine at a vendor', `Sell 3 ${m.name}s to a vendor for 1 ${f.out.name}.`];
-    else if (f.kind === 'splinter' || f.kind === 'shard') conv = ['Combine in your inventory', `A full stack of ${m.n} in your inventory turns into ${f.out.name}. If it doesn't, split one off and drop it back. Not in a stash tab.`];
-    else if (f.sixLink) conv = ['Six-link at the crafting bench', 'Needs item level 50 or more, not corrupted, and the six-link recipe unlocked. If it has fewer than 6 sockets, the 350 Jeweller\'s make them first.'];
-    else if (f.vendor) conv = ['Sell both to a vendor', `Sell ${m.name} together with ${f.in[1] ? f.in[1].name : 'the blessing'} to any vendor. You get ${f.out.name}, with new rolls.`];
-    const rows = [buy, ...extra, [f.out.name, f.out.n, conv[0], conv[1], ''], sell];
-    return rows.map((x, i) => `<li class="ef-st" data-step="${i}"><span class="ef-no" aria-hidden="true">${i + 1}</span><div><div class="row" style="gap:10px">${pic(x[0], 30, x[1])}<b>${E.esc(x[2])}</b></div><p class="sub">${E.esc(x[3])}</p>${x[4] ? `<div class="row" style="gap:6px;flex-wrap:wrap">${x[4]}</div>` : ''}</div></li>`).join('');
+    if (f.kind === 'essence') conv = [`Upgrade to ${nm(f.out.name)}`, E.esc(`In your essence tab: ${m.n} → 1 (press Upgrade${f.upgrades === 2 ? ' twice' : ''}).`)];
+    else if (f.kind === 'card') conv = [`Turn in for ${nm(f.out.name)}`, E.esc(`A full set of ${m.n} at Lilly Roth in your hideout, or Tasuni in Highgate. You get ${f.out.n}.`)];
+    else if (f.kind === 'oil') conv = [`Combine into ${nm(f.out.name)}`, E.esc(`Sell ${m.n} to any vendor: ${m.n} → 1.`)];
+    else if (f.kind === 'splinter' || f.kind === 'shard') conv = [`Combine into ${nm(f.out.name)}`, E.esc(`A full stack of ${m.n} in your inventory turns into 1. If it doesn't, split one off and drop it back. Not in a stash tab.`)];
+    else if (f.sixLink) conv = [`Six-link at the crafting bench`, E.esc(`Needs item level 50 or more, not corrupted, and the six-link recipe unlocked. Fewer than 6 sockets: the Jeweller's make them first.`)];
+    else if (f.vendor) conv = [`Sell both to a vendor for ${nm(f.out.name)}`, E.esc(`${m.name} together with ${f.in[1] ? f.in[1].name : 'the blessing'}. The result has new rolls.`)];
+    else conv = ['Convert', ''];
+    rows.push([f.out.name, 1, conv[0], conv[1], '']);
+    if (f.out.name === 'Divine Orb' || f.out.name === 'Chaos Orb') rows.push([f.out.name, 1, `Keep the ${nm(f.out.name)}s`, 'They are the money: nothing to sell.', '']);
+    else rows.push([f.out.name, 1, `Sell ${nm(f.out.name)}${f.out.label ? ` (${E.esc(f.out.label)})` : ''}`,
+      `Break-even: <b>${fmt(sellMin)}c each</b> if you paid about ${fmt(paidExp)}c, <b>${fmt(sellMinMax)}c each</b> if you paid the most (${fmt(f.payAtMost)}c). Sell below that and you lose money.${E.esc(mkt(f.cxOut, 'sell'))}`, f.kind === 'unique' ? btns(f.out.name, true) : copy(f.out.name)]);
+    return rows.map((x, i) => `<li class="ef-st" data-step="${i}"><span class="ef-no" aria-hidden="true">${i + 1}</span><div><div class="row" style="gap:10px">${pic(x[0], 30, 1)}<span class="ef-sth">${x[2]}</span></div><p class="sub">${x[3]}</p>${x[4] ? `<div class="row" style="gap:6px;flex-wrap:wrap">${x[4]}</div>` : ''}</div></li>`).join('');
   }
   function bar(labelText, share) {
     if (share == null) return `<div class="ef-share"><span>${labelText}</span><span class="sub">no volume data</span></div>`;
@@ -202,7 +217,7 @@
     const hidden = cfgE().hidden.includes(f.id);
     const route = f.route ? `<p class="sub">Cheapest route: ${f.route.best.n} × ${E.esc(f.route.best.name)} (${fmt(f.route.best.pay)}c). Other: ${f.route.alt.n} × ${E.esc(f.route.alt.name)} (${fmt(f.route.alt.pay)}c).</p>` : '';
     return `<div class="dialog ef-dlg" role="dialog" aria-modal="true" aria-labelledby="ef-t">
-      <div class="ef-dh">${recipe(f, 52)}<div class="grow"><span class="ef-kind">${KIND[f.kind] || ''}</span><h2 id="ef-t">${E.esc(m.name)}</h2><span class="sub">${E.esc(sub(f))}</span></div>
+      <div class="ef-dh">${recipe(f, 52)}<div class="grow"><span class="ef-kind">${KIND[f.kind] || ''}</span><h2 id="ef-t">${tierHtml(m.name)}</h2><span class="sub">${tierHtml(sub(f))}</span></div>
         <button class="btn i" data-efd="close" aria-label="Close">×</button></div>
       ${route}${flags(f) ? `<div class="ef-flags">${flags(f)}</div>` : ''}
       <div class="ef-qty"><span>How many times</span><button class="btn i sm" data-efd="n" data-d="-1" aria-label="Fewer" ${n <= 1 ? 'disabled' : ''}>−</button><b aria-live="polite">${n}×</b><button class="btn i sm" data-efd="n" data-d="1" aria-label="More">+</button><span class="spacer"></span><span class="sub">${E.esc(volText(f))}</span></div>
@@ -210,7 +225,7 @@
       ${bar('Buying', sc.buyShare)}${bar('Selling', sc.sellShare)}
       ${data() && data().cx ? `<div class="ef-cxbox"><b>Exchange markets</b> <span class="sub">GGG, last ${data().cx.hours} h: typical hourly price per item, in chaos</span>${cxRow(f)}</div>` : ''}
       ${div && payNow > 20 * div ? `<div class="ef-risk">You tie up ${D(payNow)}. A 1% move in the reward's price is ${C(f.getAvg * n * 0.01)}.</div>` : ''}
-      <ol class="ef-steps">${steps(f, n)}</ol>
+      <ol class="ef-steps">${steps(f)}</ol>
       ${sc.own ? `<p class="sub">Profit counts your ${sc.own} owned ${E.esc(m.name)} at their sell price (3% under poe.ninja), because selling them is your alternative.</p>` : ''}
       <p class="sub">Profit counts 3% worse prices on both sides. Gold fees on the currency exchange are not included. Prices are poe.ninja averages: check the real price before you buy.</p>
       <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn q" data-efd="hide">${hidden ? 'Show this flip again' : 'Hide this flip'}</button><button class="btn" data-efd="close">Close</button></div></div>`;
