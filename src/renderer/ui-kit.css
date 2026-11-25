@@ -659,3 +659,7 @@ html.no-motion .view{animation:none}
 .ef-sth{font-size:14.5px}
 .ef-tier{color:var(--live);letter-spacing:.03em}
 .ef-flag.ok{color:var(--ok)}
+.ef-tabs{margin:2px 0 14px}
+.ef-plain{cursor:default}
+.ef-plain:hover{background:var(--card);border-color:var(--line)}
+.ef-lim select.input{width:auto;height:32px}

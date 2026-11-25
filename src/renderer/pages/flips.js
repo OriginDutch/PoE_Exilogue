@@ -96,7 +96,52 @@
       if (cat === 'own') return f.own > 0;
       if (cat === 'splinter') return f.kind === 'splinter' || f.kind === 'shard';
       return cat === 'all' || f.kind === cat;
-    });
+    }).sort(sortOf('recipes')[2]);
+  }
+
+  // Sorting per tab: [key, label, compare]. Flips within your limits always come before the ones below them.
+  const byName = (a, b) => String(a.name || (a.in && a.in[0].name)).localeCompare(String(b.name || (b.in && b.in[0].name)));
+  const lim = f => (a, b) => (a.below - b.below) || f(a, b);
+  const SORTS = {
+    recipes: [['margin', 'Margin', lim((a, b) => (a.verify - b.verify) || b.margin - a.margin)], ['profit', 'Profit per flip', lim((a, b) => b.profit - a.profit)],
+      ['real', 'Real-trade margin', lim((a, b) => ((b.real && b.real.margin) ?? -1e9) - ((a.real && a.real.margin) ?? -1e9))], ['cost', 'Cost, low first', lim((a, b) => a.pay - b.pay)], ['name', 'Name', lim(byName)]],
+    orders: [['margin', 'Margin', (a, b) => b.margin - a.margin], ['steady', 'Steadiest price', (a, b) => (a.drift ?? 1e9) - (b.drift ?? 1e9)],
+      ['volume', 'Most traded', (a, b) => b.chaosPerHour - a.chaosPerHour], ['price', 'Price, low first', (a, b) => a.typical - b.typical], ['name', 'Name', byName]],
+    // Like recipes: gaps flagged "verify" (over 50%) after the rest.
+    exchange: [['net', 'Net margin', (a, b) => ((a.gap > 50) - (b.gap > 50)) || b.net - a.net], ['volume', 'Most traded (divines)', (a, b) => b.divPerHour - a.divPerHour], ['name', 'Name', byName]],
+  };
+  const sortOf = tab => { const u = ui().ef; const k = (u.sort && u.sort[tab]) || SORTS[tab][0][0]; return SORTS[tab].find(s => s[0] === k) || SORTS[tab][0]; };
+  const sortSel = tab => `<label class="ef-lim"><span>Sort</span><select class="input" data-efsort="${tab}" aria-label="Sort">${SORTS[tab].map(([k, l]) => `<option value="${k}" ${sortOf(tab)[0] === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
+
+  // ---------- Order flips and exchange flips (GGG's hourly exchange history) ----------
+  const copyBtn = name => `<button class="btn sm" data-efc="${E.esc(name)}">Copy name</button>`;
+  function orderCard(o) {
+    return `<div class="ef-card ef-plain"><div class="ef-rec">${pic(o.name, 46, 1, o.name)}<div class="ef-nm"><span class="ef-kind">Order flip</span><b>${tierHtml(o.name)}</b><span class="sub">typical ${fmt(o.typical)}c · traded ${fmt(o.lo)}–${fmt(o.hi)}c within an hour</span></div></div>
+      <div class="ef-nums"><div><span>Buy order</span><b>${C(o.buy)}</b><small>each</small></div><div><span>Sell order</span><b>${C(o.sell)}</b><small>each</small></div><div><span>Margin</span><b class="good">+${pct(o.margin)}</b><small>if both fill</small></div></div>
+      <div class="sub">${E.esc(`Trades reached your buy price in ${o.buyHours} of ${o.hours} hours, your sell price in ${o.sellHours} of ${o.hours}.`)}</div>
+      <div class="sub ef-foot">${E.esc(`≈ ${Math.round(o.perHour).toLocaleString('en-US')} traded an hour · price moves ≈ ${o.drift == null ? '?' : Math.round(o.drift * 10) / 10}% hour to hour · ${o.hours} h of data`)}</div>
+      <div class="row" style="gap:6px">${copyBtn(o.name)}</div></div>`;
+  }
+  function exchangeCard(x) {
+    const where = k => (k === 'chaos' ? 'chaos market' : 'divine market');
+    const batch = x.perDivine && x.perDivine >= 1 ? ` · 1 divine ≈ ${x.perDivine >= 10 ? Math.round(x.perDivine).toLocaleString('en-US') : Math.round(x.perDivine * 10) / 10} items` : '';
+    return `<div class="ef-card ef-plain"><div class="ef-rec">${pic(x.name, 46, 1, x.name)}<div class="ef-nm"><span class="ef-kind">Exchange flip</span><b>${tierHtml(x.name)}</b><span class="sub">buy in the ${where(x.buy)}, sell in the ${where(x.sell)}</span></div></div>
+      ${x.gap > 50 ? '<div class="ef-flags"><span class="ef-flag warn">⚠ Verify: gap above 50%</span></div>' : ''}
+      <div class="ef-nums"><div><span>Buy (${x.buy})</span><b>${C(x.buy === 'chaos' ? x.chaos : x.divine)}</b><small>each</small></div><div><span>Sell (${x.sell})</span><b>${C(x.sell === 'chaos' ? x.chaos : x.divine)}</b><small>each</small></div><div><span>Net</span><b class="good">+${pct(x.net)}</b><small>gap ${pct(x.gap)}</small></div></div>
+      <div class="sub ef-foot">${E.esc(`≈ ${Math.round(x.divPerHour * 10) / 10} divines traded an hour in the divine market${batch} · ${x.hours} h of data`)}</div>
+      <div class="row" style="gap:6px">${copyBtn(x.name)}</div></div>`;
+  }
+  function otherTab(d, tab) {
+    const all = tab === 'orders' ? d.orders || [] : d.exchange || [];
+    const l = [...all].sort(sortOf(tab)[2]);
+    const intro = tab === 'orders'
+      ? `Place a buy order and a sell order on the in-game currency exchange. Prices: halfway between the typical low and the typical price, and halfway between the typical price and the typical high, over GGG's last ${hrs()} hours. Only items of 10c or more with at least 10,000c traded an hour. Your orders can sit unfilled; you hold the stock in between.`
+      : `The same item, priced differently in the chaos market and the divine market over GGG's last ${hrs()} hours: buy where it is cheaper, sell where it is dearer. "Net" counts 3% worse prices on the buy, the sell and turning the divines back into chaos. Only flips with at least ${cfgE().exchangeMin}% net, where both markets really trade and someone holds the currency you sell into. Divines come in whole numbers: sell in batches.`;
+    const bar = `<div class="ef-bar">${tab === 'exchange' ? numField('exchangeMin', 'Min net', '%', cfgE().exchangeMin) : ''}<span class="spacer"></span>${sortSel(tab)}</div>`;
+    const grid = !d.cx ? `<section class="box"><div class="empty"><b>No exchange history yet</b><span>Exilogue downloads GGG's hourly exchange history in the background; this fills in within a few minutes.</span></div></section>`
+      : l.length ? `<div class="ef-grid">${l.map(tab === 'orders' ? orderCard : exchangeCard).join('')}</div>`
+      : `<section class="box"><div class="empty"><b>Nothing here right now</b><span>${tab === 'orders' && (d.cx.hours || 0) < 8 ? `Only ${d.cx.hours} hours of exchange history so far: Exilogue is still downloading the rest.` : 'Try again after the next hour comes in.'}</span></div></section>`;
+    return bar + grid + `<div class="note">${ic.info()}<span>${E.esc(intro)} These are averages of past trades, not the live order book: check the exchange before you place anything.</span></div>`;
   }
 
   function numField(key, labelText, unit, val) {
@@ -114,6 +159,10 @@
         <div class="sub" style="margin-top:4px">${d ? `poe.ninja data ${d.changedAt ? 'changed ' + age(d.changedAt) : 'unchanged since Exilogue started'} · checked ${age(d.checkedAt)} · ` : ''}buy, convert in game, sell. Profit counts 3% worse buy and sell prices, no gold fees. Check the real price before you buy.</div></div>
         <button class="btn" data-ef="refresh" ${u.loading ? 'disabled' : ''}>${ic.refresh()} ${u.loading ? 'Loading…' : 'Refresh'}</button></div>`;
       if (!d) return head + `<section class="box"><div class="empty"><b>${u.error ? 'No prices' : 'Loading prices from poe.ninja…'}</b>${u.error ? `<span>${E.esc(u.error)}</span>` : ''}</div></section>`;
+      const tab = u.tab || 'recipes';
+      const tabs = `<div class="tabs ef-tabs" role="tablist">${[['recipes', 'Recipes', d.flips.filter(f => !f.below).length], ['orders', 'Order flips', (d.orders || []).length], ['exchange', 'Exchange flips', (d.exchange || []).length]]
+        .map(([k, l, n]) => `<button role="tab" class="tab${tab === k ? ' on' : ''}" aria-selected="${tab === k}" data-ef="tab" data-tab="${k}">${l} <span class="sub">${n}</span></button>`).join('')}</div>`;
+      if (tab !== 'recipes') return head + tabs + `<div role="tabpanel" aria-label="${E.esc({ orders: 'Order flips', exchange: 'Exchange flips' }[tab])}">${otherTab(d, tab)}</div>`;
       const shown = list(d);
       const nHidden = d.flips.filter(f => e.hidden.includes(f.id)).length;
       const filters = `<div class="ef-bar" role="group" aria-label="Show">${cats().map(([k, l]) => `<button class="ef-chip${(u.cat || 'all') === k ? ' on' : ''}" data-ef="cat" data-cat="${k}" aria-pressed="${(u.cat || 'all') === k}">${E.esc(l)}</button>`).join('')}</div>
@@ -122,10 +171,10 @@
           <button class="ef-chip${e.showBelow ? ' on' : ''}" data-ef="tog" data-k="showBelow" aria-pressed="${e.showBelow}">Show below limits</button>
           <button class="ef-chip${e.highStakes ? ' on' : ''}" data-ef="tog" data-k="highStakes" aria-pressed="${e.highStakes}">High stakes</button>
           <button class="ef-chip${e.countOwned ? ' on' : ''}" data-ef="tog" data-k="countOwned" aria-pressed="${e.countOwned}" title="Use your newest Wealthy Exile export: flips you can partly do from your stash">Count what I own</button>
-          <button class="ef-chip${u.showHidden ? ' on' : ''}" data-ef="hidden" aria-pressed="${!!u.showHidden}" ${nHidden || u.showHidden ? '' : 'disabled'}>Hidden flips (${nHidden})</button></div>`;
+          <button class="ef-chip${u.showHidden ? ' on' : ''}" data-ef="hidden" aria-pressed="${!!u.showHidden}" ${nHidden || u.showHidden ? '' : 'disabled'}>Hidden flips (${nHidden})</button>${sortSel('recipes')}</div>`;
       const grid = shown.length ? `<div class="ef-grid">${shown.map(f => card(f, u.showHidden)).join('')}</div>`
         : `<section class="box"><div class="empty"><b>${u.showHidden ? 'No hidden flips' : 'No flips here right now'}</b><span>${u.showHidden ? '' : 'Prices move all the time: try again later, or loosen your limits.'}</span></div></section>`;
-      return head + filters + grid + `<div class="note">${ic.info()}<span>Sorted by margin, flips marked “verify” after the rest. Flips that real exchange trades of the last 3 hours don't confirm are greyed out ("not confirmed by real trades"); “flips an hour fit” = 10% of what trades per hour on the thinner side. Buy/Sell rows: the same item in the exchange's chaos market and divine market (typical hourly price over the last ${hrs()} hours, GGG's history; the better one is bold, not when the divine side barely traded). Volume is poe.ninja's chaos traded per hour; under 1,000c an hour counts as thin. Uniques: bench six-link (needs item level 50+, not corrupted) and Breach blessings (sell the unique and the blessing to a vendor).${d.partial ? ' Some poe.ninja lists could not be loaded.' : ''}</span></div>`;
+      return head + tabs + filters + grid + `<div class="note">${ic.info()}<span>Flips that real exchange trades of the last 3 hours don't confirm are greyed out ("not confirmed by real trades"); “flips an hour fit” = 10% of what trades per hour on the thinner side. Buy/Sell rows: the same item in the exchange's chaos market and divine market (typical hourly price over the last ${hrs()} hours, GGG's history; the better one is bold, not when the divine side barely traded). Volume is poe.ninja's chaos traded per hour; under 1,000c an hour counts as thin. Uniques: bench six-link (needs item level 50+, not corrupted) and Breach blessings (sell the unique and the blessing to a vendor).${d.partial ? ' Some poe.ninja lists could not be loaded.' : ''}</span></div>`;
     },
     mount(el) {
       load(false);
@@ -133,6 +182,8 @@
       el.addEventListener('click', onClick);
       el.addEventListener('keydown', ev => { if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches('[data-ef="open"]')) { ev.preventDefault(); openFlip(ev.target.dataset.id); } });
       el.addEventListener('change', ev => {
+        const st2 = ev.target.dataset && ev.target.dataset.efsort;
+        if (st2) { const u = ui().ef; u.sort = { ...(u.sort || {}), [st2]: ev.target.value }; return redraw(); }
         const k = ev.target.dataset && ev.target.dataset.eflim;
         if (k) EX.save({ easyflips: { [k]: Number(ev.target.value) } }).then(() => load(true));
       });
@@ -157,11 +208,14 @@
   }
 
   function onClick(ev) {
+    const cp = ev.target.closest('[data-efc]');
+    if (cp) { window.ej.copy(cp.dataset.efc); return E.toast(`Copied: ${cp.dataset.efc}`); }
     const t = ev.target.closest('[data-ef]'); if (!t) return;
     const a = t.dataset.ef, u = ui().ef;
     if (a === 'open') return openFlip(t.dataset.id);
     if (a === 'refresh') return load(true);
     if (a === 'cat') { u.cat = t.dataset.cat; return redraw(); }
+    if (a === 'tab') { u.tab = t.dataset.tab; return redraw(); }
     if (a === 'hidden') { u.showHidden = !u.showHidden; return redraw(); }
     if (a === 'tog') return EX.save({ easyflips: { [t.dataset.k]: !cfgE()[t.dataset.k] } }).then(() => { if (t.dataset.k === 'countOwned') { if (u.cat === 'own') u.cat = 'all'; load(true); } else redraw(); });
   }

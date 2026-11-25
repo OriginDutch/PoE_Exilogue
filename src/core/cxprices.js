@@ -5,13 +5,17 @@
 // Pure functions: no network, no Electron.
 const NAMES = require('./cx-names.json'); // internal id (without "Metadata/Items/") -> name, see tools/cx-names.py
 
+// Summary format: 2 = with price ranges (cLo/cHi, dLo/dHi) and currency stock (cStock/dStock). Older ones are re-downloaded.
+const SUMMARY_V = 2;
 const CHAOS = 'Metadata/Items/Currency/CurrencyRerollRare';
 const DIVINE = 'Metadata/Items/Currency/CurrencyModValues';
 const nameOf = id => NAMES[String(id).replace(/^Metadata\/Items\//, '')] || null;
 
 // One hour's file → a small summary for one league:
-// { ts, rate (chaos per divine that hour), items: { name: { ci, cc, di, dd } } }
+// { ts, rate (chaos per divine that hour), items: { name: { ci, cc, di, dd, cLo, cHi, dLo, dHi } } }
 // ci/cc: items and chaos traded in the item↔chaos market; di/dd: items and divines in the item↔divine market.
+// cLo/cHi: the cheapest and dearest price per item (chaos) traded that hour in the chaos market, from GGG's
+// lowest/highest ratio; dLo/dHi: the same in divines in the divine market. Missing when GGG gave no ratio.
 function summarizeHour(json, league, ts) {
   const markets = (json && Array.isArray(json.markets) ? json.markets : []).filter(m => m && m.league === league && Array.isArray(m.market_pair) && m.volume_traded);
   const dc = markets.find(m => m.market_pair.includes(CHAOS) && m.market_pair.includes(DIVINE));
@@ -26,9 +30,20 @@ function summarizeHour(json, league, ts) {
       const name = nameOf(item); if (!name) continue;
       const e = items[name] = items[name] || { ci: 0, cc: 0, di: 0, dd: 0 };
       if (cur === CHAOS) { e.ci += n; e.cc += c; } else { e.di += n; e.dd += c; }
+      // Price range that hour: each ratio is { item: a, currency: b } → b / a currency per item.
+      const per = r => (r && Number(r[item]) > 0 && Number(r[cur]) > 0 ? Number(r[cur]) / Number(r[item]) : null);
+      const p1 = per(m.lowest_ratio), p2 = per(m.highest_ratio);
+      if (p1 != null && p2 != null) {
+        const lo = Math.min(p1, p2), hi = Math.max(p1, p2);
+        if (cur === CHAOS) { e.cLo = lo; e.cHi = hi; } else { e.dLo = lo; e.dHi = hi; }
+      }
+      // Currency on offer in this market that hour (GGG's highest stock of the chaos or divine side): someone has to
+      // hold divines (or chaos) for you to sell into.
+      const stock = Number(m.highest_stock && m.highest_stock[cur]);
+      if (Number.isFinite(stock)) { if (cur === CHAOS) e.cStock = stock; else e.dStock = stock; }
     }
   }
-  return { ts: Number(ts) || null, rate, items };
+  return { v: SUMMARY_V, ts: Number(ts) || null, rate, items };
 }
 
 const median = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), h = s.length >> 1; return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2; };
@@ -40,13 +55,15 @@ function aggregate(hours) {
   const hs = (hours || []).filter(h => h && h.items);
   const acc = {};
   for (const h of hs) for (const [name, e] of Object.entries(h.items)) {
-    const a = acc[name] = acc[name] || { c: [], d: [], de: [], dv: 0, dh: [] };
-    if (e.ci > 0 && e.cc > 0) a.c.push(e.cc / e.ci);
+    const a = acc[name] = acc[name] || { c: [], d: [], de: [], dv: 0, dh: [], cv: 0, cs: [], ds: [] };
+    if (e.ci > 0 && e.cc > 0) { a.c.push(e.cc / e.ci); a.cv += e.cc; }
+    if (e.cStock != null) a.cs.push(e.cStock);
+    if (e.dStock != null) a.ds.push(e.dStock);
     if (e.di > 0 && e.dd > 0 && h.rate > 0) { a.d.push((e.dd / e.di) * h.rate); a.de.push(e.dd / e.di); a.dv += e.dd; a.dh.push(e.dd); }
   }
   const out = {};
   for (const [name, a] of Object.entries(acc)) out[name] = { chaos: median(a.c), divine: median(a.d), divEach: median(a.de),
-    chaosHours: a.c.length, divHours: a.d.length, divPerHour: hs.length ? a.dv / hs.length : 0, divMedian: median(a.dh) || 0, hours: hs.length };
+    chaosHours: a.c.length, chaosPerHour: hs.length ? a.cv / hs.length : 0, chaosStock: median(a.cs), divStock: median(a.ds), divHours: a.d.length, divPerHour: hs.length ? a.dv / hs.length : 0, divMedian: median(a.dh) || 0, hours: hs.length };
   return out;
 }
 
@@ -108,4 +125,55 @@ function check(flip, rec, { spread = 0.03, minMargin = 10, known = null } = {}) 
   return { status: margin >= minMargin ? 'confirmed' : 'unconfirmed', margin, perHour: caps.length ? Math.floor(Math.min(...caps)) : null, hours: rec.hours };
 }
 
-module.exports = { summarizeHour, aggregate, compare, recent, check, nameOf, CHAOS, DIVINE, THIN, SHARE };
+// Order flips: items whose price within an hour spreads much wider than it moves from hour to hour. Buy orders halfway
+// between the typical low and the typical price, sell orders halfway between the typical price and the typical high
+// (medians over the hours). Only the chaos market; items of at least minPrice chaos with minVol chaos traded an hour.
+function orderFlips(hours, { minPrice = 10, minVol = 10000, minShare = 0.66 } = {}) {
+  const hs = (hours || []).filter(h => h && h.items).sort((a, b) => a.ts - b.ts);
+  const acc = {};
+  hs.forEach((h, i) => { for (const [name, e] of Object.entries(h.items)) {
+    if (!(e.ci > 0 && e.cc > 0 && e.cLo > 0 && e.cHi > 0)) continue;
+    (acc[name] = acc[name] || []).push({ i, avg: e.cc / e.ci, lo: e.cLo, hi: e.cHi, vol: e.cc });
+  } });
+  const out = [];
+  for (const [name, l] of Object.entries(acc)) {
+    if (l.length < Math.max(2, hs.length * minShare)) continue;
+    const typical = median(l.map(x => x.avg)), lo = median(l.map(x => x.lo)), hi = median(l.map(x => x.hi)), vol = median(l.map(x => x.vol));
+    if (!(typical >= minPrice && vol >= minVol && hi > lo)) continue;
+    const steps = []; for (let k = 1; k < l.length; k++) if (l[k].i === l[k - 1].i + 1) steps.push(Math.abs(l[k].avg / l[k - 1].avg - 1));
+    const buy = (Math.min(lo, typical) + typical) / 2, sell = (typical + Math.max(hi, typical)) / 2;
+    const margin = 100 * (sell / buy - 1), drift = steps.length ? 100 * median(steps) : null;
+    // The spread has to be wider than the price moves: margin at least twice the typical hour-to-hour change.
+    if (drift == null || margin < 2 * drift) continue;
+    // lo/hi are each hour's single cheapest/dearest trade: in how many hours did trades reach your order prices?
+    const buyHours = l.filter(x => x.lo <= buy).length, sellHours = l.filter(x => x.hi >= sell).length;
+    out.push({ name, typical, lo, hi, buy, sell, margin, range: 100 * (hi / lo - 1),
+      drift, perHour: vol / typical, chaosPerHour: vol, hours: l.length, buyHours, sellHours });
+  }
+  return out.sort((a, b) => b.margin - a.margin);
+}
+
+// Exchange flips: the same item priced differently in the chaos market and the divine market (aggregate(), last hours).
+// Buy where it is cheaper, sell where it is dearer. gap: dearer / cheaper − 1; net: after 3% worse prices on the buy,
+// the sell and turning the divines back into chaos (or chaos into divines). Thin divine markets are left out.
+// minNet: the net margin (after the 3% steps) at least this. Someone must hold the currency you sell into: in the
+// divine market at least minDivStock divines on offer in a typical hour, in the chaos market minDivStock divines' worth.
+function exchangeFlips(prices, { minNet = 10, spread = 0.03, minChaos = 500, minDivStock = 3, rate = null } = {}) {
+  const out = [];
+  for (const name of Object.keys(prices || {})) {
+    const c = compare(prices, name), e = prices[name];
+    if (!c || c.pct == null || c.thin) continue;
+    // The chaos side must trade too: in 3 of 4 hours and at least minChaos chaos an hour.
+    if (!(e.chaosHours >= e.hours * 0.75 && (e.chaosPerHour || 0) >= minChaos)) continue;
+    const lo = Math.min(c.chaos, c.divine), hi = Math.max(c.chaos, c.divine), gap = 100 * (hi / lo - 1);
+    const net = 100 * ((hi * (1 - spread) * (1 - spread)) / (lo * (1 + spread)) - 1);
+    if (net < minNet) continue;
+    const sellDivine = c.chaos < c.divine;
+    if (sellDivine ? !((e.divStock || 0) >= minDivStock) : !(rate > 0 && (e.chaosStock || 0) >= minDivStock * rate)) continue;
+    out.push({ name, buy: c.chaos < c.divine ? 'chaos' : 'divine', sell: c.chaos < c.divine ? 'divine' : 'chaos', chaos: c.chaos, divine: c.divine,
+      gap, net, perDivine: c.perDivine, divPerHour: c.divPerHour, hours: c.hours });
+  }
+  return out.sort((a, b) => b.net - a.net);
+}
+
+module.exports = { summarizeHour, aggregate, compare, recent, check, orderFlips, exchangeFlips, nameOf, CHAOS, DIVINE, THIN, SHARE, SUMMARY_V };

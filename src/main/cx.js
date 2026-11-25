@@ -8,7 +8,7 @@
 //  - Rate limits: on 429 or a server error everything stops until Retry-After (or 15 minutes) has passed.
 const fs = require('fs');
 const path = require('path');
-const { summarizeHour, aggregate, recent } = require('../core/cxprices');
+const { summarizeHour, aggregate, recent, orderFlips, SUMMARY_V } = require('../core/cxprices');
 
 const URL = ts => `https://web.poecdn.com/api/currency-exchange/${ts}`;
 const HOURS = 12;
@@ -43,7 +43,11 @@ class CxHistory {
       const m = /^(.+)-(\d{10})\.json$/.exec(f);
       if (!m) continue;
       if (m[1] !== safe(this.league)) { try { fs.unlinkSync(path.join(this.dir, f)); } catch { /* in use */ } continue; }
-      try { const s = JSON.parse(fs.readFileSync(path.join(this.dir, f), 'utf8')); if (s && s.items) this.hours.set(Number(m[2]), s); } catch { /* skip */ }
+      try {
+        const s = JSON.parse(fs.readFileSync(path.join(this.dir, f), 'utf8'));
+        // Saved by an older version (no price ranges / stock): deleted, so the hour is downloaded again.
+        if (s && s.items && s.v === SUMMARY_V) this.hours.set(Number(m[2]), s); else fs.unlinkSync(path.join(this.dir, f));
+      } catch { /* skip */ }
     }
   }
 
@@ -97,7 +101,8 @@ class CxHistory {
     if (!hs.length) return null;
     if (!this.agg) {
       const newest3 = hs.sort((a, b) => b[0] - a[0]).slice(0, RECENT).map(([, s]) => s);
-      this.agg = { prices: aggregate(hs.map(([, s]) => s)), recent: recent(newest3), hours: hs.length, newest: Math.max(...hs.map(([ts]) => ts)) * 1000 };
+      const sums = hs.map(([ts, s]) => ({ ...s, ts }));
+      this.agg = { prices: aggregate(sums), recent: recent(newest3), orders: orderFlips(sums), hours: hs.length, newest: Math.max(...hs.map(([ts]) => ts)) * 1000 };
     }
     return this.agg;
   }

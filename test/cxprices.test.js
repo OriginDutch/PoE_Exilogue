@@ -95,3 +95,31 @@ test('cx: recent real prices over both markets, and a flip checked against them'
   assert.equal(check({ in: [{ name: 'A', n: 3 }], out: { name: 'Divine Orb', n: 1 } }, r).status, 'confirmed');
   assert.equal(check(flip, null).status, 'unchecked');
 });
+
+test('cx: price range per hour from GGG ratios, order flips and exchange flips', () => {
+  const { orderFlips, exchangeFlips } = require('../src/core/cxprices');
+  const mkr = (a, b, va, vb, lo, hi) => ({ ...mk('Covens', a, b, va, vb), lowest_ratio: lo, highest_ratio: hi });
+  const hourR = (i, avg) => ({ next_change_id: 1, markets: [mk('Covens', CHAOS, DIVINE, 18000, 100),
+    mkr(ZEAL, CHAOS, 1000, 1000 * avg, { [ZEAL]: 1, [CHAOS]: 15 }, { [ZEAL]: 1, [CHAOS]: 21 })] });
+  const hs = [16, 18, 17, 18].map((p, i) => summarizeHour(hourR(i, p), 'Covens', i));
+  assert.equal(hs[0].items['Deafening Essence of Zeal'].cLo, 15); assert.equal(hs[0].items['Deafening Essence of Zeal'].cHi, 21);
+  const o = orderFlips(hs, { minPrice: 10, minVol: 10000 });
+  assert.equal(o.length, 1);
+  const z = o[0];
+  assert.equal(z.typical, 17.5); assert.equal(z.buy, (15 + 17.5) / 2); assert.equal(z.sell, (17.5 + 21) / 2);
+  assert.ok(Math.abs(z.margin - 100 * (19.25 / 16.25 - 1)) < 1e-9);
+  assert.equal(z.buyHours, 4); assert.equal(z.sellHours, 4);
+  // A price that moves more from hour to hour than the spread: not an order flip.
+  const wild = [10, 20, 11, 22].map((p, i) => summarizeHour(hourR(i, p), 'Covens', i));
+  assert.equal(orderFlips(wild).length, 0);
+  assert.equal(orderFlips(hs, { minPrice: 20 }).length, 0);
+  const prices = { X: { chaos: 10, divine: 14, divEach: 14 / 180, chaosHours: 4, chaosPerHour: 1000, divStock: 10, divHours: 4, divPerHour: 9, divMedian: 9, hours: 4 },
+    Z: { chaos: 10, divine: 14, divEach: 14 / 180, chaosHours: 4, chaosPerHour: 1000, divStock: 0, divHours: 4, divPerHour: 9, divMedian: 9, hours: 4 },
+    Q: { chaos: 10, divine: 14, divEach: 14 / 180, chaosHours: 4, chaosPerHour: 50, divStock: 10, divHours: 4, divPerHour: 9, divMedian: 9, hours: 4 },
+    Y: { chaos: 10, divine: 10.5, divEach: 0.06, chaosHours: 4, divHours: 4, divPerHour: 9, divMedian: 9, hours: 4 },
+    T: { chaos: 10, divine: 20, divEach: 0.1, chaosHours: 4, divHours: 1, divPerHour: 9, divMedian: 9, hours: 4 } };
+  const e = exchangeFlips(prices, { minNet: 10 });
+  assert.deepEqual(e.map(x => x.name), ['X']);
+  assert.equal(e[0].buy, 'chaos'); assert.equal(e[0].sell, 'divine');
+  assert.ok(Math.abs(e[0].net - 100 * ((14 * 0.97 * 0.97) / (10 * 1.03) - 1)) < 1e-9);
+});

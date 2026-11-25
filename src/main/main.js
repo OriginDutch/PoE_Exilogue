@@ -80,7 +80,7 @@ const DEFAULT_CONFIG = {
   // Release channel: stable, or test (pre-releases first). `shown`: the hidden switch was revealed (5 clicks on the version).
   updates: { channel: 'stable', shown: false },
   // Easyflips: limits (margin %, most divines tied up), what is shown, and flips hidden by hand (ids).
-  easyflips: { minMargin: 10, maxDiv: 50, showBelow: true, highStakes: false, countOwned: false, hidden: [] },
+  easyflips: { minMargin: 10, maxDiv: 50, showBelow: true, highStakes: false, countOwned: false, exchangeMin: 10, hidden: [] },
   // Lifetime disk counters (bytes), kept here so a rebuild, restore or new league doesn't reset them.
   io: { since: null, dbWritten: 0, backupWritten: 0, configWritten: 0, iconWritten: 0, wealthWritten: 0, logRead: 0, otherRead: 0 },
 };
@@ -152,7 +152,7 @@ function sanitizeConfig() {
   c.neversink = { lastSyncedTag: c.neversink && typeof c.neversink.lastSyncedTag === 'string' ? c.neversink.lastSyncedTag : null, syncedAt: c.neversink && Number.isFinite(c.neversink.syncedAt) ? c.neversink.syncedAt : null, remind: !(c.neversink && c.neversink.remind === false) };
   for (const [id, sz] of Object.entries(c.layout.sizes || {})) if (!SIZES.includes(sz)) delete c.layout.sizes[id];
   { const e = c.easyflips || {}; const n = (v, lo, hi, d) => { const x = Number(v); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, Math.round(x))) : d; };
-    c.easyflips = { minMargin: n(e.minMargin, 0, 500, 10), maxDiv: n(e.maxDiv, 1, 100000, 50), showBelow: e.showBelow !== false, highStakes: !!e.highStakes, countOwned: !!e.countOwned,
+    c.easyflips = { minMargin: n(e.minMargin, 0, 500, 10), exchangeMin: n(e.exchangeMin, 0, 500, 10), maxDiv: n(e.maxDiv, 1, 100000, 50), showBelow: e.showBelow !== false, highStakes: !!e.highStakes, countOwned: !!e.countOwned,
       hidden: [...new Set((Array.isArray(e.hidden) ? e.hidden : []).filter(x => typeof x === 'string' && /^[a-z0-9-]{1,120}$/.test(x)))].slice(0, 300) }; }
   c.updates = { channel: c.updates && c.updates.channel === 'test' ? 'test' : 'stable', shown: !!(c.updates && (c.updates.shown || c.updates.channel === 'test')) };
   delete c.links; delete c.background;
@@ -1191,7 +1191,12 @@ function flipsView() {
   const h = cx && cx.get();
   const flips = flipsWithCx();
   // Limits may have changed since the last download: reapply them without downloading again.
-  return { ...flipsState, flips, cx: h ? { hours: h.hours, recentHours: h.recent.hours, newest: h.newest } : null, ...flipsSummary(flips) };
+  // The other two tabs: order flips (price range within an hour) and exchange flips (chaos vs divine market).
+  const exch = exchangeList(h);
+  const icons = ninjaIconMap();
+  const withIcon = l => l.map(x => ({ ...x, icon: icons.get(x.name) || null }));
+  return { ...flipsState, flips, cx: h ? { hours: h.hours, recentHours: h.recent.hours, newest: h.newest } : null,
+    orders: h ? withIcon(h.orders.slice(0, 200)) : [], exchange: withIcon(exch.slice(0, 200)), ...flipsSummary(flips) };
 }
 function flipsSummary(flips) {
   const e = config.data.easyflips;
@@ -1507,8 +1512,29 @@ function iconExtras() {
       const id = flipIconId(x.name);
       if (x.icon && !seen.has(id) && seen.size < 250) { seen.add(id); out.push({ id, url: x.icon }); }
     }
+    // Then the order and exchange flips' items, best first, while there is room (recipes come first: same 250 cap).
+    const h = cx && cx.get();
+    const icons = ninjaIconMap();
+    if (h) for (const name of [...h.orders.slice(0, 80).map(o => o.name), ...exchangeList(h).slice(0, 80).map(o => o.name)]) {
+      const id = flipIconId(name), icon = icons.get(name);
+      if (icon && !seen.has(id) && seen.size < 250) { seen.add(id); out.push({ id, url: icon }); }
+    }
   }
   return out;
+}
+// Item pictures by name from every poe.ninja exchange list Exilogue has loaded (order and exchange flips).
+function ninjaIconMap() {
+  const m = new Map();
+  for (const t of Object.keys(ninja.ex || {})) for (const l of (ninja.ex[t] && ninja.ex[t].lines) || []) if (l.icon && !m.has(l.name)) m.set(l.name, l.icon);
+  return m;
+}
+// Exchange flips for the current GGG data and setting, worked out once per change.
+let exchKey = null, exchList = [];
+function exchangeList(h) {
+  if (!h) return [];
+  const key = `${cx.rev}|${config.data.easyflips.exchangeMin}`;
+  if (key !== exchKey) { exchList = cxprices.exchangeFlips(h.prices, { minNet: config.data.easyflips.exchangeMin, rate: h.recent.rate }); exchKey = key; }
+  return exchList;
 }
 const flipIconId = name => ('ef-' + String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')).slice(0, 60);
 
