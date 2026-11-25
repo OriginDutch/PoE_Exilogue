@@ -18,7 +18,7 @@
   const mapIc = (zone, t, lg) => { const src = E.iconOf(glyphId(zone)); return src ? `<span class="mapic ${band(t)}${lg ? ' lg' : ''}" aria-hidden="true"><img src="${esc(src)}" alt=""></span>` : ''; };
   // nav: the title opens the tile's page. 'title' = only the title does (the rest of the tile has its own click action).
   const head = (id, name, sub, right = '', nav = true) => {
-    const def = { id, mono: E.CARDS[id] ? E.CARDS[id].mono : ({ days: 'MD', fun: 'FS' }[id] || id.slice(0, 2).toUpperCase()) };
+    const def = { id, mono: E.CARDS[id] ? E.CARDS[id].mono : ({ days: 'MD', fun: 'FS', flips: 'EF' }[id] || id.slice(0, 2).toUpperCase()) };
     const open = nav ? `<button class="open${nav === 'title' ? ' open-title' : ''}" data-nav="page:${id}">${name}</button>` : `<span class="open">${name}</span>`;
     return `<div class="ch">${E.logo(def)}<div class="t">${open}${sub ? `<div class="sub ell">${sub}</div>` : ''}</div>${right}</div>`;
   };
@@ -254,6 +254,19 @@
       <div class="fslist">${f.slice(0, 4).map(x => `<div><b>${esc(x.text)}</b><span class="sub">${esc(x.sub)}</span></div>`).join('')}</div>`;
   }
 
+  // ---------- Easyflips ----------
+  function flips({ snap }) {
+    const f = snap.flips || { state: 'loading' };
+    const h = head('flips', 'Easyflips', 'buy · convert · sell', ic.chev());
+    if (f.state !== 'ok') return `${h}<div class="sub">${f.state === 'error' ? 'poe.ninja could not be reached.' : 'Loading prices…'}</div>`;
+    const b = f.best;
+    const pic = (name, n) => { const src = (EX.state.icons || {})[('ef-' + String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')).slice(0, 60)];
+      return `<span class="ef-ic" style="--s:34px" aria-hidden="true">${src ? `<img src="${esc(src)}" alt="">` : '<span class="ef-noimg"></span>'}${n > 1 ? `<b>${n}</b>` : ''}</span>`; };
+    return `${h}<button class="ef-tile" data-nav="page:flips"><span class="ef-cnt"><b>${f.count}</b><span>easy flip${f.count === 1 ? '' : 's'}</span></span>
+      ${b ? `<span class="ef-best" aria-hidden="true">${pic(b.name, b.n)}<span class="ef-arrow">→</span>${pic(b.out.name, b.out.n)}</span>` : ''}</button>
+      ${b ? `<div class="sub ell">best: ${esc(b.name)} <span class="pill ok">+${Math.round(b.margin)}% margin</span></div>` : '<div class="sub">Nothing within your limits right now.</div>'}`;
+  }
+
   EX.TILES = {
     poe: { name: 'Path of Exile', wide: true, render: poe },
     wealthy: { name: 'Wealthy Exile', render: wealthy },
@@ -267,8 +280,9 @@
     today: { name: 'Today', render: today },
     days: { name: 'Maps per day', wide: true, render: days },
     fun: { name: 'League facts', render: fun },
+    flips: { name: 'Easyflips', render: flips },
   };
-  EX.TILE_ORDER = ['poe', 'wealthy', 'ninja', 'maps', 'pob', 'campaign', 'filter', 'overlay', 'apt', 'today', 'days', 'fun'];
+  EX.TILE_ORDER = ['poe', 'wealthy', 'flips', 'ninja', 'maps', 'pob', 'campaign', 'filter', 'overlay', 'apt', 'today', 'days', 'fun'];
   // The user's order (from Edit layout), limited to these tiles, with any new tile added at its default place.
   EX.tileOrder = cfg => {
     const saved = (cfg.layout.order || []).filter(id => EX.TILES[id]);

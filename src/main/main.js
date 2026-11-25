@@ -11,6 +11,7 @@ const { LeagueDb, checkFile } = require('./db');
 const { IconStore } = require('./icons');
 const { Wealth } = require('./wealth');
 const essences = require('../core/essences');
+const easyflips = require('../core/easyflips');
 const poeconfig = require('../core/poeconfig');
 const gamekeys = require('../core/gamekeys');
 const { NinjaPrice, ITEM_TYPES: NINJA_TYPES, SHEET_TYPES } = require('./ninja');
@@ -23,7 +24,7 @@ const { Tracker, freshState } = require('../core/tracker');
 const APP_NAME = 'Exilogue';
 app.setName(APP_NAME);
 
-const CARD_IDS = ['poe', 'maps', 'campaign', 'wealthy', 'overlay', 'filter', 'pob', 'apt', 'ninja', 'trade', 'goal', 'today', 'fate', 'threads', 'days', 'fun'];
+const CARD_IDS = ['poe', 'maps', 'campaign', 'wealthy', 'overlay', 'filter', 'pob', 'apt', 'ninja', 'trade', 'goal', 'today', 'fate', 'threads', 'days', 'fun', 'flips'];
 const SIZES = ['xs', 's', 'm', 'l', 'xl'];
 
 const DEFAULT_CONFIG = {
@@ -76,6 +77,8 @@ const DEFAULT_CONFIG = {
   neversink: { lastSyncedTag: null, syncedAt: null, remind: true },
   // Release channel: stable, or test (pre-releases first). `shown`: the hidden switch was revealed (5 clicks on the version).
   updates: { channel: 'stable', shown: false },
+  // Easyflips: limits (margin %, most divines tied up), what is shown, and flips hidden by hand (ids).
+  easyflips: { minMargin: 10, maxDiv: 50, showBelow: true, highStakes: false, hidden: [] },
   // Lifetime disk counters (bytes), kept here so a rebuild, restore or new league doesn't reset them.
   io: { since: null, dbWritten: 0, backupWritten: 0, configWritten: 0, iconWritten: 0, wealthWritten: 0, logRead: 0, otherRead: 0 },
 };
@@ -140,10 +143,15 @@ function sanitizeConfig() {
   // v0.6 Home is a new layout: an order from the old tile grid is replaced once by the new default.
   if (c.layout.v !== 6) { c.layout.order = ['poe', 'wealthy', 'ninja', 'maps', 'pob', 'campaign', 'filter', 'overlay', 'apt', 'today']; c.layout.v = 6; }
   const order = (c.layout.order || []).filter(id => CARD_IDS.includes(id));
+  // New in v0.9: Easyflips goes right after Wealthy Exile, not at the end.
+  if (!order.includes('flips')) { const w = order.indexOf('wealthy'); order.splice(w < 0 ? order.length : w + 1, 0, 'flips'); }
   for (const id of CARD_IDS) if (!order.includes(id)) order.push(id);
   c.layout.order = order;
   c.neversink = { lastSyncedTag: c.neversink && typeof c.neversink.lastSyncedTag === 'string' ? c.neversink.lastSyncedTag : null, syncedAt: c.neversink && Number.isFinite(c.neversink.syncedAt) ? c.neversink.syncedAt : null, remind: !(c.neversink && c.neversink.remind === false) };
   for (const [id, sz] of Object.entries(c.layout.sizes || {})) if (!SIZES.includes(sz)) delete c.layout.sizes[id];
+  { const e = c.easyflips || {}; const n = (v, lo, hi, d) => { const x = Number(v); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, Math.round(x))) : d; };
+    c.easyflips = { minMargin: n(e.minMargin, 0, 500, 10), maxDiv: n(e.maxDiv, 1, 100000, 50), showBelow: e.showBelow !== false, highStakes: !!e.highStakes,
+      hidden: [...new Set((Array.isArray(e.hidden) ? e.hidden : []).filter(x => typeof x === 'string' && /^[a-z0-9-]{1,120}$/.test(x)))].slice(0, 300) }; }
   c.updates = { channel: c.updates && c.updates.channel === 'test' ? 'test' : 'stable', shown: !!(c.updates && (c.updates.shown || c.updates.channel === 'test')) };
   delete c.links; delete c.background;
 }
@@ -496,6 +504,7 @@ function snapshot() {
     mostRun: mostRunLeague(),
     league: leagueStats(),
     update: updateState,
+    flips: flipsInfo(),
   };
 }
 
@@ -506,7 +515,7 @@ const hiddenWc = new Set(); // windows whose page reports it can't be seen (cove
 let lastIdleTick = 0;
 function statusKey() {
   return JSON.stringify([gen, updateState, overlayNoteState && overlayNoteState.until, breakPrompt && [breakPrompt.shownAt, breakPrompt.revealed], ninja.rev, sheetCache.rev, config.data.goal, aptRunning, aptLaunchedAt, pobBuild && pobBuild.file + pobBuild.mtime, icons ? icons.rev : 0, wealth ? [(weManualTick(), wealth.rev), wealth.lastError, wealthSyncAt, weBgSyncAt, weManualExpiredAt, weFailAt, weScriptVersion, Math.floor(weScriptSeenAt / 300000), weBgNext().state] : 0, tracker ? tracker.rev : -1, gameRunning, caughtUp, catchup, logMissing, hotkeyStatus, hotkeyGame, overlayUnlocked,
-    profileStatus, neversinkLatest, config.data.neversink, pathsCache, leagueDb && leagueDb.corruptFile, (gameDisplayCached(), gameExclusiveFs)]);
+    profileStatus, neversinkLatest, config.data.neversink, flipsState && flipsState.at, flipsError, config.data.easyflips, pathsCache, leagueDb && leagueDb.corruptFile, (gameDisplayCached(), gameExclusiveFs)]);
 }
 function broadcast() {
   const wins = [dashWin, overlayWin, sheetWin].filter(w => w && !w.isDestroyed() && w.isVisible() && !w.isMinimized() && !hiddenWc.has(w.webContents.id));
@@ -1085,7 +1094,7 @@ async function launchCompanions() {
 }
 
 // ---------- goal, prices & today ----------
-const ninja = new NinjaPrice({ fetch, userAgent: `Exilogue/${app.getVersion()} (personal companion app)` });
+const ninja = new NinjaPrice({ fetch, userAgent: `Exilogue/${app.getVersion()} (+https://github.com/OriginDutch/PoE_Exilogue)` });
 function goalInfo() {
   const g = config.data.goal;
   if (!g.name) return null;
@@ -1113,6 +1122,56 @@ function mostRunLeague() {
   let best = null;
   for (const [k, n] of by) if (!best || n > best.runs) { const [zone, t] = k.split('|'); best = { zone, tier: Number(t) || null, runs: n }; }
   return best;
+}
+
+// ---------- Easyflips ----------
+// poe.ninja lists at most 5 minutes old while the page asks (every minute); Home gets a summary from the last result and
+// starts a refresh when that is over 15 minutes old. Owned counts come from the newest Wealthy Exile export.
+let flipsState = null, flipsBusy = null, flipsError = null, flipsErrorAt = 0, ownedCache = { at: -1, counts: {} };
+function ownedCounts() {
+  const at = wealth ? wealth.latestAt() || 0 : 0;
+  if (at !== ownedCache.at) {
+    const exp = wealth ? wealth.latestItems() : null, counts = {};
+    for (const it of (exp && exp.items) || []) if (it.qty > 0) counts[it.name] = (counts[it.name] || 0) + it.qty;
+    ownedCache = { at, counts };
+  }
+  return ownedCache.counts;
+}
+function flipsRefresh(force = false) {
+  if (flipsBusy) return flipsBusy;
+  flipsBusy = (async () => {
+    try {
+      const d = await ninja.easyflipData(config.data.league.name, force);
+      const e = config.data.easyflips;
+      const r = easyflips.compute({ lines: d.lines, uniques: d.uniques, owned: ownedCounts(),
+        opts: { minMargin: e.minMargin, maxDiv: e.maxDiv, divineAlt: d.divineAlt } });
+      flipsState = { ...r, changedAt: d.changedAt, checkedAt: d.checkedAt, partial: d.partial, at: Date.now() };
+      flipsError = null;
+    } catch (err) { flipsError = 'poe.ninja could not be reached. Exilogue tries again in a few minutes.'; flipsErrorAt = Date.now(); }
+    finally { flipsBusy = null; }
+  })();
+  return flipsBusy;
+}
+function flipsView() {
+  if (!flipsState) return null;
+  // Limits may have changed since the last download: reapply them without downloading again.
+  return { ...flipsState, ...flipsSummary(flipsState.flips) };
+}
+function flipsSummary(flips) {
+  const e = config.data.easyflips;
+  const s = easyflips.summary(flips, { highStakes: e.highStakes, hidden: e.hidden });
+  return { count: s.count, best: s.best };
+}
+// Home's summary: refreshed in the background when over 15 minutes old (checked every minute; after an error, 5 minutes wait).
+function flipsBackground() {
+  const old = !flipsState || Date.now() - flipsState.at > 15 * 60e3;
+  if (old && !flipsBusy && Date.now() - flipsErrorAt > 5 * 60e3 && config.data.ui.welcomeDone) flipsRefresh();
+}
+function flipsInfo() {
+  if (!flipsState) return { state: flipsError ? 'error' : 'loading', error: flipsError };
+  const s = flipsSummary(flipsState.flips);
+  return { state: 'ok', count: s.count, best: s.best && { id: s.best.id, name: s.best.in[0].name, n: s.best.in[0].n, out: s.best.out, inIcon: s.best.in[0].icon, margin: s.best.margin },
+    at: flipsState.at, error: flipsError };
 }
 
 // ---------- auto-update (installed version only) ----------
@@ -1392,8 +1451,20 @@ function iconExtras() {
     const p = sheetCache.prices[r.type + ':' + r.id];
     if (p && p.icon && n++ < 300) out.push({ id: sheetIconId(r.type, r.id), url: p.icon });
   }
+  // Easyflips item pictures: every input and output of the current flips (at most 250).
+  // Mirror Shard art for the Easyflips sidebar item and page, whether or not a flip uses it.
+  const ms = ninja.ex && ninja.ex.Currency && ninja.ex.Currency.lines.find(l => l.name === 'Mirror Shard');
+  if (ms && ms.icon) out.push({ id: 'ef-mirror-shard', url: ms.icon });
+  if (flipsState) {
+    const seen = new Set(['ef-mirror-shard']);
+    for (const f of flipsState.flips) for (const x of [...f.in, f.out]) {
+      const id = flipIconId(x.name);
+      if (x.icon && !seen.has(id) && seen.size < 250) { seen.add(id); out.push({ id, url: x.icon }); }
+    }
+  }
   return out;
 }
+const flipIconId = name => ('ef-' + String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')).slice(0, 60);
 
 // "Today" starts at 05:00, so a night session past midnight still counts as the same day.
 const DAY_START_HOUR = 5;
@@ -1667,6 +1738,12 @@ function launchExe(exe) {
 function setupIpc() {
   ipcMain.handle('config:get', () => effectiveConfig());
   // Goal search (all unique categories from poe.ninja; the first search loads them, ~7 requests, then cached an hour).
+  ipcMain.handle('flips:get', async (_e, force) => {
+    // After an error, wait 5 minutes (the Refresh button can still try right away).
+    const waiting = flipsError && Date.now() - flipsErrorAt < 5 * 60e3;
+    if (force || (!waiting && (!flipsState || Date.now() - flipsState.at > 60e3))) await flipsRefresh(!!force);
+    return { ok: !!flipsState, error: flipsError, data: flipsView() };
+  });
   ipcMain.handle('goal:search', async (_e, q) => {
     try { const r = await ninja.search(config.data.league.name, String(q || '').slice(0, 80)); return { ok: true, items: r.items || [], partial: !!r.partial }; }
     catch (e) { return { ok: false, error: 'Could not load the item list from poe.ninja. Try again in a minute.' }; }
@@ -1691,6 +1768,7 @@ function setupIpc() {
     if (patch.paths) { refreshPaths(); if (iconRefresh) iconRefresh(); }
     if (patch.overlay && 'enabled' in patch.overlay) setOverlayEnabled(config.data.overlay.enabled);
     if (patch.essences && !config.data.essences.enabled) hideEssences();
+    if (patch.easyflips && flipsState && ('minMargin' in patch.easyflips || 'maxDiv' in patch.easyflips)) flipsRefresh();
     if (patch.updates && 'channel' in patch.updates) { applyChannel(); if (updateCheckNow) setTimeout(updateCheckNow, 500); }
     // Stats are wiped before the new path/start is saved: a crash in between leaves old stats with the old config.
     if (JSON.stringify([config.data.paths.clientTxt, config.data.league.start]) !== before) {
@@ -1749,6 +1827,7 @@ function setupIpc() {
     return { ok: false, error: 'Unknown program' };
   });
   ipcMain.handle('open:url', (_e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });
+  ipcMain.handle('clip:write', (_e, text) => { clipboard.writeText(String(text || '').slice(0, 200)); return true; });
   // Wealthy Exile tile: open the stash page with a marker the userscript reacts to (sync, then export).
   // At most once per WEALTH_SYNC_MS; within that, the plain page opens.
   ipcMain.handle('wealth:sync', () => weSyncNow());
@@ -1932,10 +2011,12 @@ app.whenReady().then(() => {
     onChange: () => {},
   });
   // Cheap when nothing is due (no network, no writes); fetches only what is missing or older than 30 days.
-  const refreshIcons = () => icons.refresh({ poeExe: config.data.paths.poeExe, pobExe: config.data.paths.pobExe, aptExe: config.data.paths.aptExe, mapName: bestMapName(), extra: iconExtras(), sheetsKnown: sheetCache.complete, sheetKeep: sheetRefs().map(r => sheetIconId(r.type, r.id)) }).catch(() => {});
+  const refreshIcons = () => icons.refresh({ poeExe: config.data.paths.poeExe, pobExe: config.data.paths.pobExe, aptExe: config.data.paths.aptExe, mapName: bestMapName(), extra: iconExtras(), sheetsKnown: sheetCache.complete, flipsKnown: !!flipsState, sheetKeep: sheetRefs().map(r => sheetIconId(r.type, r.id)) }).catch(() => {});
   // New art to fetch (a new map in the recent list, poe.ninja icons that just arrived): checked every minute, fetched once.
   let extrasSeen = '';
   setInterval(() => { const sig = JSON.stringify(iconExtras()); if (sig !== extrasSeen) { extrasSeen = sig; refreshIcons(); } }, 60 * 1000);
+  setTimeout(flipsBackground, 20e3);
+  setInterval(flipsBackground, 60e3);
   setTimeout(refreshIcons, 5000);
   setInterval(refreshIcons, 10 * 60 * 1000);
   iconRefresh = refreshIcons;

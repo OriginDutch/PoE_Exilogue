@@ -250,6 +250,7 @@ class IconStore {
       const wanted = new Set([...(ctx.extra || []).map(x => x && x.id), ...(ctx.sheetKeep || [])]);
       // (Only once the sheet prices are known: before that the list is empty and everything would be thrown away.)
       if (ctx.sheetsKnown) for (const id of Object.keys(this.index)) if (/^cs-/.test(id) && !wanted.has(id)) drop.push(id);
+      if (ctx.flipsKnown) for (const id of Object.keys(this.index)) if (/^ef-/.test(id) && id !== 'ef-mirror-shard' && !wanted.has(id)) drop.push(id);
       for (const id of drop) {
         const e = this.index[id];
         try { fs.unlinkSync(path.join(this.dir, e.file)); } catch { /* gone */ }

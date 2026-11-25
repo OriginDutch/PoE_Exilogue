@@ -9,7 +9,8 @@
   // Bundled game art (src/renderer/art) wins for these: Campaign = Waypoint, Session & Maps = Map Device,
   // APT = its own logo (MIT, github.com/SnosMe/awakened-poe-trade; its exe has no icon Windows can read).
   const BUNDLED = { campaign: 'art/waypoint.webp', maps: 'art/map-device.webp', apt: 'art/apt.webp' };
-  const iconOf = id => { if (BUNDLED[id]) return BUNDLED[id]; const s = EX.state; return s && s.icons && s.icons[id] || null; };
+  const ALIAS = { flips: 'ef-mirror-shard' }; // Easyflips uses Mirror Shard art
+  const iconOf = id => { if (BUNDLED[id]) return BUNDLED[id]; const s = EX.state; return s && s.icons && s.icons[ALIAS[id] || id] || null; };
   // Session & Maps: the frame takes the tier colour of the highest tier reached (white 1–5, yellow 6–10, red 11+).
   const tierCls = id => {
     const t = id === 'maps' && EX.state && EX.state.snap && EX.state.snap.stats && EX.state.snap.stats.highestTier;

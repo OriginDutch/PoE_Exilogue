@@ -131,7 +131,7 @@
       const t = E.TILES[id], hidden = !!cfg.layout.hidden[id];
       return `<section class="card dn ed${t.wide ? ' wide' : ''}${hidden ? ' hid' : ''}" data-edcard="${id}" draggable="true">
         <div class="ch"><button class="grip" data-grip="${id}" aria-label="Move ${E.esc(t.name)}: drag, or use arrow keys">${ic.grip()}</button>
-          ${E.logo({ id, mono: E.CARDS[id] ? E.CARDS[id].mono : ({ days: 'MD', fun: 'FS' }[id] || id.slice(0, 2).toUpperCase()) })}
+          ${E.logo({ id, mono: E.CARDS[id] ? E.CARDS[id].mono : ({ days: 'MD', fun: 'FS', flips: 'EF' }[id] || id.slice(0, 2).toUpperCase()) })}
           <div class="t"><span class="ell" style="display:block;font-size:15px;font-weight:600">${E.esc(t.name)}</span><div class="sub">${t.wide ? 'Two columns wide' : 'One column'}${hidden ? ' · hidden' : ''}</div></div>
           <button class="btn i sm" data-act="hide" data-id="${id}" aria-pressed="${hidden}" aria-label="${hidden ? 'Show' : 'Hide'} ${E.esc(t.name)}">${hidden ? ic.eyeOff() : ic.eye()}</button></div>
       </section>`;

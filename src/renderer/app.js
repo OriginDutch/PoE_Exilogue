@@ -39,7 +39,7 @@
   }
 
   // ---------- sidebar ----------
-  const TOOLS = [['poe', 'PE', 'Path of Exile'], ['maps', 'SM', 'Session &amp; Maps'], ['campaign', 'CP', 'Campaign'], ['wealthy', 'WE', 'Wealthy Exile'], ['overlay', 'OV', 'Overlay'], ['filter', 'LF', 'Loot filter'], ['pob', 'PB', 'Path of Building'], ['sheets', 'CS', 'Cheat sheets']];
+  const TOOLS = [['poe', 'PE', 'Path of Exile'], ['maps', 'SM', 'Session &amp; Maps'], ['campaign', 'CP', 'Campaign'], ['wealthy', 'WE', 'Wealthy Exile'], ['flips', 'EF', 'Easyflips'], ['overlay', 'OV', 'Overlay'], ['filter', 'LF', 'Loot filter'], ['pob', 'PB', 'Path of Building'], ['sheets', 'CS', 'Cheat sheets']];
   // Links leave the app: they open in your browser, and say so.
   const LINKS = [['ninja', 'PN', 'poe.ninja', 'https://poe.ninja'], ['trade', 'TR', 'Trade', 'https://www.pathofexile.com/trade']];
 

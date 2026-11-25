@@ -71,12 +71,25 @@ class NinjaPrice {
     this.rev = 0;
   }
 
+  // Conditional requests (poe.ninja asks for them): an unchanged list costs a 304 and no download.
+  // changedAt[url]: when the content last changed, as far as Exilogue has seen (poe.ninja has no data timestamp).
   async _json(url) {
-    const r = await this.fetch(url, { headers: { 'User-Agent': this.ua, Accept: 'application/json' }, signal: AbortSignal.timeout(20000) });
+    this.etag = this.etag || new Map(); this.changedAt = this.changedAt || {};
+    const prev = this.etag.get(url);
+    const headers = { 'User-Agent': this.ua, Accept: 'application/json' };
+    if (prev && prev.etag) headers['If-None-Match'] = prev.etag;
+    const r = await this.fetch(url, { headers, signal: AbortSignal.timeout(20000) });
+    if (r.status === 304 && prev) return JSON.parse(prev.text);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const text = await r.text();
     if (text.length > MAX_BYTES) throw new Error('too large');
-    return JSON.parse(text);
+    const json = JSON.parse(text);
+    // The first answer since start says nothing about when poe.ninja's data changed: only a later different answer does.
+    if (prev && prev.text !== text) this.changedAt[url] = Date.now();
+    const etag = r.headers && typeof r.headers.get === 'function' ? r.headers.get('etag') : null;
+    // Only the lists Easyflips refreshes often are kept for 304s (the unique lists are large: no copy kept).
+    if (etag && /exchange\/current\/overview/.test(url)) this.etag.set(url, { etag, text }); else if (prev) this.etag.delete(url);
+    return json;
   }
 
   _can(what, key) { const f = this.failed[what]; return !f || f.key !== key || Date.now() - f.at > f.wait; }
@@ -107,6 +120,7 @@ class NinjaPrice {
       id: typeof l.detailsId === 'string' ? l.detailsId.slice(0, 120) : null, type,
       name: l.name, variant: typeof l.variant === 'string' ? l.variant.slice(0, 80) : null, base: typeof l.baseType === 'string' ? l.baseType.slice(0, 60) : null,
       chaos: Number(l.chaosValue) || null, divines: Number(l.divineValue) || null, links: l.links || 0,
+      itemType: typeof l.itemType === 'string' ? l.itemType.slice(0, 40) : null, corrupted: !!l.corrupted, listings: Number(l.listingCount) || 0,
       relic: /relic/i.test(l.detailsId || '') || isRelicIcon(l.icon),
       icon: httpsOnly(abs(l.icon)), change: l.sparkLine && Number.isFinite(l.sparkLine.totalChange) ? l.sparkLine.totalChange : null,
     }));
@@ -144,7 +158,8 @@ class NinjaPrice {
       if (!it || typeof it.name !== 'string' || typeof l.id !== 'string') continue;
       const ch = l.sparkline && Number(l.sparkline.totalChange);
       lines.push({ id: l.id.slice(0, 120), type, name: it.name.slice(0, 100), variant: null, base: null, links: 0, relic: false,
-        chaos: toChaos(Number(l.primaryValue)), icon: httpsOnly(abs(it.image)), change: Number.isFinite(ch) ? ch : null });
+        chaos: toChaos(Number(l.primaryValue)), icon: httpsOnly(abs(it.image)), change: Number.isFinite(ch) ? ch : null,
+        vol: toChaos(Number(l.volumePrimaryValue)) }); // vol: chaos traded per hour
     }
     this.ex[type] = { key, at: Date.now(), lines };
     return lines;
@@ -291,6 +306,29 @@ class NinjaPrice {
     const prices = {};
     for (const l of lines) if (l.chaos > 0) prices[l.name] = l.chaos;
     return { prices, at: (this.ex.Essence && this.ex.Essence.at) || Date.now(), chaosIcon: this.currency && this.currency.icons ? this.currency.icons.chaos : null };
+  }
+
+  // Easyflips: the exchange lists it needs (at most 5 minutes old), the body armour and weapon uniques (15 minutes),
+  // and when poe.ninja's data last changed. Throws only when nothing at all could be loaded.
+  async easyflipData(fullLeague, force = false) {
+    const league = await this._league(fullLeague);
+    const types = ['Currency', 'Essence', 'Oil', 'Fragment', 'DivinationCard'];
+    // A list that failed is not asked again for 5 minutes; its last copy is used meanwhile (if any).
+    const get = async (type, load) => {
+      const key = `${league}|ef:${type}`, old = (this.ex && this.ex[type]) || this.items[type];
+      if (!force && !this._can('ef:' + type, key)) return old && old.key.startsWith(league + '|') ? old.lines : null;
+      try { return await load(); } catch { this._fail('ef:' + type, key, 5 * 60e3); return null; }
+    };
+    const parts = await mapLimit(types, 2, type => get(type, () => this._exchange(league, type, 5 * 60e3)));
+    const uparts = await mapLimit(['UniqueArmour', 'UniqueWeapon', 'UniqueAccessory', 'UniqueJewel'], 1, type => get(type, () => this._items(league, type, SHEET_MAX_AGE)));
+    const lines = parts.filter(Boolean).flat();
+    if (!lines.length) throw new Error('poe.ninja not reachable');
+    const urls = types.map(t => `${BASE}/economy/exchange/current/overview?league=${encodeURIComponent(league)}&type=${t}`);
+    const changed = Math.max(0, ...urls.map(u => (this.changedAt && this.changedAt[u]) || 0));
+    const checked = Math.max(0, ...types.map(t => (this.ex[t] && this.ex[t].at) || 0));
+    const uniques = uparts.filter(Boolean).flat().filter(u => !u.corrupted && !u.relic);
+    return { lines, uniques, changedAt: changed || null, checkedAt: checked || null, partial: parts.includes(null) || uparts.includes(null),
+      divineAlt: this.currency && this.currency.divineChaos };
   }
 
   async refresh(fullLeague, goalIn) {
