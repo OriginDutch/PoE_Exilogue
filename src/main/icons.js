@@ -239,10 +239,16 @@ class IconStore {
       for (const [id, url] of Object.entries(SITES)) changed = (await this._site(id, url)) || changed;
       for (const [id, url] of Object.entries(ART)) changed = (await this._url(id, [url])) || changed;
       // Extra art the app asks for: currency and goal icons from poe.ninja, map glyphs for recent maps.
-      for (const x of ctx.extra || []) {
-        if (!x || !/^[a-z0-9-]{1,60}$/.test(x.id) || typeof x.url !== 'string' || !/^https:\/\/web\.poecdn\.com\//.test(x.url)) continue;
-        changed = (await this._url(x.id, [x.url])) || changed;
-      }
+      // Four at a time; a long first batch (Easyflips: up to 250 pictures) shows up every 20 new pictures, not only at the end.
+      const todo = (ctx.extra || []).filter(x => x && /^[a-z0-9-]{1,60}$/.test(x.id) && typeof x.url === 'string' && /^https:\/\/web\.poecdn\.com\//.test(x.url));
+      let fresh = 0, next = 0;
+      const worker = async () => {
+        while (next < todo.length) {
+          const x = todo[next++];
+          if (await this._url(x.id, [x.url])) { changed = true; if (++fresh % 20 === 0) { this.data = null; this.rev++; this.o.onChange && this.o.onChange(); } }
+        }
+      };
+      await Promise.all([worker(), worker(), worker(), worker()]);
       // Map glyphs and goal art pile up as you play other maps or change goals: keep the newest 40, delete the rest.
       const extra = Object.entries(this.index).filter(([id]) => /^(map|goal)-/.test(id)).sort((a, b) => (b[1].at || 0) - (a[1].at || 0));
       const drop = extra.slice(40).map(([id]) => id);

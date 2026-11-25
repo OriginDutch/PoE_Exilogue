@@ -595,7 +595,8 @@ html.no-motion .view{animation:none}
 
 /* ---------- Easyflips ---------- */
 .ef-ic{position:relative;display:inline-grid;place-items:center;width:var(--s);height:var(--s);flex:none;border-radius:8px;background:var(--card2);border:1px solid var(--line)}
-.ef-ic img{width:82%;height:82%;object-fit:contain}
+/* tall art (staves, bows, body armours) is scaled into the square, never past it */
+.ef-ic img{position:absolute;inset:8%;width:84%;height:84%;object-fit:contain}
 .ef-ic b{position:absolute;top:-6px;left:-6px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:var(--bg);border:1px solid var(--line2);font-size:11px;line-height:16px;text-align:center;color:var(--tx)}
 .ef-noimg{width:50%;height:50%;border-radius:4px;background:var(--line)}
 .ef-arrow,.ef-plus{color:var(--tx3);font-weight:600}

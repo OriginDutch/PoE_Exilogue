@@ -1127,6 +1127,7 @@ function mostRunLeague() {
 // ---------- Easyflips ----------
 // poe.ninja lists at most 5 minutes old while the page asks (every minute); Home gets a summary from the last result and
 // starts a refresh when that is over 15 minutes old. Owned counts come from the newest Wealthy Exile export.
+let flipsIconsNow = null;
 let flipsState = null, flipsBusy = null, flipsError = null, flipsErrorAt = 0, ownedCache = { at: -1, counts: {} };
 function ownedCounts() {
   const at = wealth ? wealth.latestAt() || 0 : 0;
@@ -1147,6 +1148,7 @@ function flipsRefresh(force = false) {
         opts: { minMargin: e.minMargin, maxDiv: e.maxDiv, divineAlt: d.divineAlt } });
       flipsState = { ...r, changedAt: d.changedAt, checkedAt: d.checkedAt, partial: d.partial, at: Date.now() };
       flipsError = null;
+      if (flipsIconsNow) flipsIconsNow(); // new pictures right away, not at the next minute's check
     } catch (err) { flipsError = 'poe.ninja could not be reached. Exilogue tries again in a few minutes.'; flipsErrorAt = Date.now(); }
     finally { flipsBusy = null; }
   })();
@@ -2014,7 +2016,9 @@ app.whenReady().then(() => {
   const refreshIcons = () => icons.refresh({ poeExe: config.data.paths.poeExe, pobExe: config.data.paths.pobExe, aptExe: config.data.paths.aptExe, mapName: bestMapName(), extra: iconExtras(), sheetsKnown: sheetCache.complete, flipsKnown: !!flipsState, sheetKeep: sheetRefs().map(r => sheetIconId(r.type, r.id)) }).catch(() => {});
   // New art to fetch (a new map in the recent list, poe.ninja icons that just arrived): checked every minute, fetched once.
   let extrasSeen = '';
-  setInterval(() => { const sig = JSON.stringify(iconExtras()); if (sig !== extrasSeen) { extrasSeen = sig; refreshIcons(); } }, 60 * 1000);
+  const extrasCheck = () => { const sig = JSON.stringify(iconExtras()); if (sig !== extrasSeen) { extrasSeen = sig; refreshIcons(); } };
+  setInterval(extrasCheck, 60 * 1000);
+  flipsIconsNow = extrasCheck;
   setTimeout(flipsBackground, 20e3);
   setInterval(flipsBackground, 60e3);
   setTimeout(refreshIcons, 5000);

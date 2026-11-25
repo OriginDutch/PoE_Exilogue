@@ -79,7 +79,7 @@
     render() {
       const u = ui().ef = ui().ef || { cat: 'all' };
       const d = data(), e = cfgE();
-      const head = `<div class="ph"><span class="logo lg" aria-hidden="true">${curIc('ef-mirror-shard') || 'EF'}</span><div class="grow"><h1 class="h">Easyflips</h1>
+      const head = `<div class="ph">${(m => (m ? `<span class="logo lg img" aria-hidden="true"><img src="${E.esc(m)}" alt=""></span>` : '<span class="logo lg" aria-hidden="true">EF</span>'))(E.iconOf('flips'))}<div class="grow"><h1 class="h">Easyflips</h1>
         <div class="sub" style="margin-top:4px">${d ? `poe.ninja data ${d.changedAt ? 'changed ' + age(d.changedAt) : 'unchanged since Exilogue started'} · checked ${age(d.checkedAt)} · ` : ''}buy, convert in game, sell. Profit counts 3% worse buy and sell prices, no gold fees. Check the real price before you buy.</div></div>
         <button class="btn" data-ef="refresh" ${u.loading ? 'disabled' : ''}>${ic.refresh()} ${u.loading ? 'Loading…' : 'Refresh'}</button></div>`;
       if (!d) return head + `<section class="box"><div class="empty"><b>${u.error ? 'No prices' : 'Loading prices from poe.ninja…'}</b>${u.error ? `<span>${E.esc(u.error)}</span>` : ''}</div></section>`;
