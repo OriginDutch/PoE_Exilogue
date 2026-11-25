@@ -1,11 +1,11 @@
 {
   "name": "exilogue",
-  "version": "0.9.0-beta.2",
+  "version": "0.9.0-beta.3",
   "description": "Path of Exile league compendium",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/tracker.test.js test/db.test.js test/logwatcher.test.js test/icons.test.js test/wealth.test.js test/ninja.test.js test/wesync.test.js test/pob.test.js test/essences.test.js test/poeconfig.test.js test/browser.test.js test/detect.test.js test/gamekeys.test.js test/easyflips.test.js",
+    "test": "node --test test/tracker.test.js test/db.test.js test/logwatcher.test.js test/icons.test.js test/wealth.test.js test/ninja.test.js test/wesync.test.js test/pob.test.js test/essences.test.js test/poeconfig.test.js test/browser.test.js test/detect.test.js test/gamekeys.test.js test/easyflips.test.js test/cxprices.test.js",
     "mockups": "python3 tools/screenshots.py",
     "package": "electron-packager . Exilogue --platform=win32 --arch=x64 --out=dist --overwrite --ignore=^/mockups --ignore=^/tools --ignore=^/test --ignore=^/dist --ignore=^/build",
     "dist": "electron-builder --win nsis --x64 --publish never"

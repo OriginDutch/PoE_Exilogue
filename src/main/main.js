@@ -12,6 +12,8 @@ const { IconStore } = require('./icons');
 const { Wealth } = require('./wealth');
 const essences = require('../core/essences');
 const easyflips = require('../core/easyflips');
+const cxprices = require('../core/cxprices');
+const { CxHistory, exchangeLeague } = require('./cx');
 const poeconfig = require('../core/poeconfig');
 const gamekeys = require('../core/gamekeys');
 const { NinjaPrice, ITEM_TYPES: NINJA_TYPES, SHEET_TYPES } = require('./ninja');
@@ -465,6 +467,7 @@ function diagnostics() {
     `Hotkeys: ${Object.entries(hotkeyStatus || {}).filter(([, v]) => v && !['ok', 'none', 'waiting'].includes(v)).map(([k, v]) => k + ' ' + v).join(', ') || 'all ok'}`,
     `Updates: ${config.data.updates.channel} channel · ${updateState.state}${updateState.error ? ' · ' + scrubPaths(updateState.error) : ''}`,
     `poe.ninja: ${ninja.rev ? 'prices loaded' : 'no prices yet'} · profile: ${profileStatus.state}`,
+    `Exchange history: ${cx && cx.get() ? cx.get().hours + ' hours' : 'none yet'}${cx && cx.lastError ? ' · last error ' + scrubPaths(cx.lastError) : ''}`,
     `Wealthy Exile: exports ${w ? w.count || 0 : 0} · script ${weScriptVersion || config.data.weSync.seenVersion || 'never seen'}${weServer && weServer.error ? ' · server ' + scrubPaths(weServer.error) : ''}${wealth && wealth.lastError ? ' · last error ' + scrubPaths(wealth.lastError.msg || '') : ''}`,
     `Database: ${leagueDb && leagueDb.corruptFile ? 'a damaged file was set aside' : 'ok'}`,
   ].join('\n');
@@ -1095,6 +1098,14 @@ async function launchCompanions() {
 
 // ---------- goal, prices & today ----------
 const ninja = new NinjaPrice({ fetch, userAgent: `Exilogue/${app.getVersion()} (+https://github.com/OriginDutch/PoE_Exilogue)` });
+// GGG's hourly currency exchange history (chaos and divine markets separately), for Easyflips. Set up at app ready.
+let cx = null;
+async function cxRefresh() {
+  if (!cx || !config.data.ui.welcomeDone) return;
+  let short; try { short = await ninja._league(config.data.league.name); } catch { cx.lastError = 'league name: poe.ninja not reachable'; return; }
+  const league = exchangeLeague(config.data.league.name, short);
+  if (league) await cx.refresh(league);
+}
 function goalInfo() {
   const g = config.data.goal;
   if (!g.name) return null;
@@ -1156,8 +1167,11 @@ function flipsRefresh(force = false) {
 }
 function flipsView() {
   if (!flipsState) return null;
+  // Exchange markets (last 12 hours, GGG): what the input costs and the output pays, in chaos and in divines.
+  const h = cx && cx.get();
+  const flips = h ? flipsState.flips.map(f => ({ ...f, cxIn: cxprices.compare(h.prices, f.in[0].name), cxOut: cxprices.compare(h.prices, f.out.name) })) : flipsState.flips;
   // Limits may have changed since the last download: reapply them without downloading again.
-  return { ...flipsState, ...flipsSummary(flipsState.flips) };
+  return { ...flipsState, flips, cx: h ? { hours: h.hours, newest: h.newest } : null, ...flipsSummary(flipsState.flips) };
 }
 function flipsSummary(flips) {
   const e = config.data.easyflips;
@@ -2020,6 +2034,9 @@ app.whenReady().then(() => {
   setInterval(extrasCheck, 60 * 1000);
   flipsIconsNow = extrasCheck;
   setTimeout(flipsBackground, 20e3);
+  cx = new CxHistory({ fetch, userAgent: `Exilogue/${app.getVersion()} (+https://github.com/OriginDutch/PoE_Exilogue)`, dir: path.join(app.getPath('userData'), 'cx') });
+  setTimeout(() => cxRefresh().catch(() => {}), 40e3);
+  setInterval(() => cxRefresh().catch(() => {}), 10 * 60e3);
   setInterval(flipsBackground, 60e3);
   setTimeout(refreshIcons, 5000);
   setInterval(refreshIcons, 10 * 60 * 1000);

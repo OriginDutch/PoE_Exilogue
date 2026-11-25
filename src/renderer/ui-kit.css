@@ -650,3 +650,9 @@ html.no-motion .view{animation:none}
 .ef-cnt span{color:var(--tx2)}
 .ef-best{display:flex;align-items:center;gap:6px}
 .ef-dlg p.sub,.ef-dlg .sub{white-space:normal}
+.ef-cx{display:flex;flex-direction:column;gap:3px;font-size:12.5px}
+.ef-cx>div{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.ef-cxl{width:30px;color:var(--tx3);font-size:11.5px;text-transform:uppercase;letter-spacing:.06em}
+.ef-mk{color:var(--tx2)}.ef-mk.on{color:var(--tx);font-weight:700}
+.ef-mk.on::before{content:'› ';color:var(--ok)}
+.ef-cxbox{display:flex;flex-direction:column;gap:6px;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px}

@@ -45,6 +45,29 @@
   const volText = f => (f.inVol == null ? 'no volume data' : `${f.in[0].name} trades ≈ ${fmt(f.inVol)}c an hour`);
   const sub = f => `${f.in[0].n} → ${f.out.n > 1 ? f.out.n + ' × ' : ''}${label(f)}${f.kind === 'essence' && f.upgrades === 2 ? ' · 2 upgrades' : ''}`;
 
+  // GGG's exchange, last 12 hours: the same item's price in the chaos market and in the divine market (in chaos).
+  // side 'buy': lower is better; 'sell': higher is better. The better market is bold.
+  const cxPrice = v => (v == null ? '–' : `${fmt(v)}c`);
+  // buy: how much cheaper the better market is; sell: how much more it pays.
+  const gap = (c, side) => { const lo = Math.min(c.chaos, c.divine), hi = Math.max(c.chaos, c.divine); return Math.round(100 * (side === 'buy' ? 1 - lo / hi : hi / lo - 1)); };
+  const advise = (c, side) => c && c.pct != null && !c.thin && gap(c, side) >= 1;
+  function cxPair(c, side) {
+    if (!c || (c.chaos == null && c.divine == null)) return '<span class="sub">no exchange data</span>';
+    const best = advise(c, side) ? (side === 'buy' ? c.buy : c.sell) : null;
+    const one = (k, l) => `<span class="${best === k ? 'ef-mk on' : 'ef-mk'}">${l} ${cxPrice(c[k])}</span>`;
+    const diff = best ? ` <span class="sub">(${side === 'buy' ? '−' : '+'}${gap(c, side)}%)</span>` : c.thin && c.divine != null ? ' <span class="sub">(few divine trades)</span>' : '';
+    return `${one('chaos', 'chaos')}${one('divine', 'divine')}${diff}`;
+  }
+  // A row only where the exchange has the item (uniques aren't on it; Divine Orbs are the money itself).
+  const has = c => c && (c.chaos != null || c.divine != null);
+  const cxRow = f => {
+    if (!(data() && data().cx)) return '';
+    const rows = [has(f.cxIn) ? `<div><span class="ef-cxl">Buy</span>${cxPair(f.cxIn, 'buy')}</div>` : '',
+      has(f.cxOut) && f.out.name !== 'Divine Orb' ? `<div><span class="ef-cxl">Sell</span>${cxPair(f.cxOut, 'sell')}</div>` : ''].join('');
+    return rows ? `<div class="ef-cx">${rows}</div>` : '';
+  };
+  const hrs = () => (data() && data().cx ? data().cx.hours : 12);
+
   function card(f, hidden) {
     const reasons = f.reasons.map(r => WHY[r]).filter(Boolean);
     return `<div class="ef-card${f.below ? ' dim' : ''}" role="button" tabindex="0" data-ef="open" data-id="${f.id}">
@@ -52,6 +75,7 @@
       ${flags(f) ? `<div class="ef-flags">${flags(f)}</div>` : ''}
       <div class="ef-nums"><div><span>You pay</span><b>${money(f, f.payNow)}</b>${f.own ? `<small>for ${f.in[0].n - f.own} more</small>` : ''}</div><div><span>You get</span><b>${money(f, f.get)}</b></div>
         <div><span>Profit</span><b class="${f.profit > 0 ? 'good' : 'bad'}">${signed(f, f.profit)}</b><small>${pct(f.margin)}</small></div></div>
+      ${cxRow(f)}
       <div class="sub ef-foot">${E.esc(volText(f))}${f.below && reasons.length ? ' · ' + reasons.join(', ') : ''}${hidden ? ' · hidden' : ''}</div></div>`;
   }
 
@@ -93,7 +117,7 @@
           <button class="ef-chip${u.showHidden ? ' on' : ''}" data-ef="hidden" aria-pressed="${!!u.showHidden}" ${nHidden || u.showHidden ? '' : 'disabled'}>Hidden flips (${nHidden})</button></div>`;
       const grid = shown.length ? `<div class="ef-grid">${shown.map(f => card(f, u.showHidden)).join('')}</div>`
         : `<section class="box"><div class="empty"><b>${u.showHidden ? 'No hidden flips' : 'No flips here right now'}</b><span>${u.showHidden ? '' : 'Prices move all the time: try again later, or loosen your limits.'}</span></div></section>`;
-      return head + filters + grid + `<div class="note">${ic.info()}<span>Sorted by margin, flips marked “verify” after the rest. Volume is poe.ninja's chaos traded per hour; under 1,000c an hour counts as thin. Uniques: bench six-link (needs item level 50+, not corrupted) and Breach blessings (sell the unique and the blessing to a vendor).${d.partial ? ' Some poe.ninja lists could not be loaded.' : ''}</span></div>`;
+      return head + filters + grid + `<div class="note">${ic.info()}<span>Sorted by margin, flips marked “verify” after the rest. Buy/Sell rows: the same item in the exchange's chaos market and divine market (typical hourly price over the last ${hrs()} hours, GGG's history; the better one is bold, not when the divine side barely traded). Volume is poe.ninja's chaos traded per hour; under 1,000c an hour counts as thin. Uniques: bench six-link (needs item level 50+, not corrupted) and Breach blessings (sell the unique and the blessing to a vendor).${d.partial ? ' Some poe.ninja lists could not be loaded.' : ''}</span></div>`;
     },
     mount(el) {
       load(false);
@@ -142,11 +166,19 @@
     const btns = (name, unique) => `<button class="btn sm" data-efd="copy" data-name="${E.esc(name)}">Copy name</button><button class="btn sm q" data-efd="trade" data-name="${E.esc(name)}" data-unique="${unique ? 1 : 0}">Trade site ${ic.ext()}</button>`;
     const buyBtns = btns(m.name, f.kind === 'unique');
     const sellBtns = `<button class="btn sm" data-efd="copy" data-name="${E.esc(f.out.name)}">Copy name</button>`;
-    const buy = [m.name, m.n, sc.own ? `Buy ${buyN} more × ${m.name}` : `Buy ${buyN} × ${m.name}`, (sc.own ? `You already own ${sc.own}. ` : '') + most, buyBtns];
+    // Which exchange market to use, from GGG's last 12 hours (text only; the HTML line is added below the step).
+    const mkt = (c, side) => {
+      if (!advise(c, side)) return '';
+      const best = side === 'buy' ? c.buy : c.sell, by = gap(c, side);
+      const batch = c.perDivine && c.perDivine >= 1 ? ` (1 divine ≈ ${c.perDivine >= 10 ? Math.round(c.perDivine) : Math.round(c.perDivine * 10) / 10} items)` : '';
+      return side === 'buy' ? ` Over the last ${hrs()} h it was ${by}% cheaper to buy with ${best === 'chaos' ? 'chaos' : 'divines' + batch}.`
+        : ` Over the last ${hrs()} h it paid ${by}% more to sell for ${best === 'chaos' ? 'chaos' : 'divines' + batch}.`;
+    };
+    const buy = [m.name, m.n, sc.own ? `Buy ${buyN} more × ${m.name}` : `Buy ${buyN} × ${m.name}`, (sc.own ? `You already own ${sc.own}. ` : '') + most + mkt(f.cxIn, 'buy'), buyBtns];
     // Bench currency is counted in what you pay; a blessing has to be bought like the unique.
     const extra = f.in.slice(1).map(x => [x.name, x.n, x.cost ? `Have ${(x.n * n).toLocaleString('en-US')} × ${x.name}` : `Buy ${(x.n * n).toLocaleString('en-US')} × ${x.name}`, 'Counted in what you pay.', x.cost ? '' : btns(x.name, false)]);
     const sellEach = f.out.n > 1 ? `${fmt(f.get / f.out.n)}c each` : `${fmt(f.get)}c`;
-    const sell = [f.out.name, f.out.n, `Sell ${(f.out.n * n).toLocaleString('en-US')} × ${label(f)}`, f.out.name === 'Divine Orb' ? 'Divine Orbs are money: nothing to sell.' : `Around ${sellEach} after the spread.`, f.out.name === 'Divine Orb' ? '' : sellBtns];
+    const sell = [f.out.name, f.out.n, `Sell ${(f.out.n * n).toLocaleString('en-US')} × ${label(f)}`, f.out.name === 'Divine Orb' ? 'Divine Orbs are money: nothing to sell.' : `Around ${sellEach} after the spread.` + mkt(f.cxOut, 'sell'), f.out.name === 'Divine Orb' ? '' : sellBtns];
     let conv;
     if (f.kind === 'essence') conv = f.upgrades === 2 ? ['Upgrade twice in your essence tab', `Press Upgrade: ${m.n * n} → ${3 * n} of the tier between, then again → ${n}.`] : ['Upgrade in your essence tab', `Put them in the essence tab and press Upgrade: every 3 become 1 ${f.out.name}.`];
     else if (f.kind === 'card') conv = [n > 1 ? `Turn in ${n} full sets` : 'Turn in the full set', 'At Lilly Roth in your hideout, or Tasuni in Highgate.'];
@@ -176,6 +208,7 @@
       <div class="ef-qty"><span>How many times</span><button class="btn i sm" data-efd="n" data-d="-1" aria-label="Fewer" ${n <= 1 ? 'disabled' : ''}>−</button><b aria-live="polite">${n}×</b><button class="btn i sm" data-efd="n" data-d="1" aria-label="More">+</button><span class="spacer"></span><span class="sub">${E.esc(volText(f))}</span></div>
       <div class="ef-nums big"><div><span>You pay</span><b>${money(f, payNow)}</b>${sc.own ? `<small>for ${buyN} more</small>` : ''}</div><div><span>You get</span><b>${money(f, f.get * n)}</b></div><div><span>Profit</span><b class="${profit > 0 ? 'good' : 'bad'}">${signed(f, profit)}</b><small>${pct(sc.margin)}</small></div></div>
       ${bar('Buying', sc.buyShare)}${bar('Selling', sc.sellShare)}
+      ${data() && data().cx ? `<div class="ef-cxbox"><b>Exchange markets</b> <span class="sub">GGG, last ${data().cx.hours} h: typical hourly price per item, in chaos</span>${cxRow(f)}</div>` : ''}
       ${div && payNow > 20 * div ? `<div class="ef-risk">You tie up ${D(payNow)}. A 1% move in the reward's price is ${C(f.getAvg * n * 0.01)}.</div>` : ''}
       <ol class="ef-steps">${steps(f, n)}</ol>
       ${sc.own ? `<p class="sub">Profit counts your ${sc.own} owned ${E.esc(m.name)} at their sell price (3% under poe.ninja), because selling them is your alternative.</p>` : ''}
