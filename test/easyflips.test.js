@@ -116,3 +116,15 @@ test('easyflips: missing prices are skipped, never NaN', () => {
   assert.equal(r.flips.length, 0);
   assert.deepEqual(compute({}).flips, []);
 });
+
+test('easyflips: div card list comes from the generated table', () => {
+  const { CARDS } = require('../src/core/easyflips');
+  const by = Object.fromEntries(CARDS.map(c => [c[0], c]));
+  assert.ok(CARDS.length >= 60);
+  assert.deepEqual(by['Seven Years Bad Luck'], ['Seven Years Bad Luck', 13, 'Mirror Shard', 1]);
+  assert.deepEqual(by['Abandoned Wealth'], ['Abandoned Wealth', 5, 'Exalted Orb', 3]);
+  assert.ok(!by['The Immortal'] && !by['The Gambler']);
+  const r = compute({ lines: [L('Abandoned Wealth', 10, 5000), L('Exalted Orb', 20, 50000), L('Divine Orb', 180, 1e6)], uniques: [], owned: {}, opts: {} });
+  const f = r.flips.find(x => x.id === 'card-abandoned-wealth');
+  assert.ok(f && f.in[0].n === 5 && f.out.n === 3 && f.out.name === 'Exalted Orb');
+});

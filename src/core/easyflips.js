@@ -30,17 +30,11 @@ const SHARDS = [
   ["Harbinger's Shard", "Harbinger's Orb"], ['Ancient Shard', 'Ancient Orb'], ["Engineer's Shard", "Engineer's Orb"],
   ['Regal Shard', 'Regal Orb'], ['Chaos Shard', 'Chaos Orb'], ['Alchemy Shard', 'Orb of Alchemy'],
 ];
-// Divination cards: full set → reward. Only cards whose reward is itself priced on poe.ninja's exchange.
-// poe.ninja's exchange doesn't give stack sizes or reward text, so this list is kept by hand.
-const CARDS = [
-  ['Altered Perception', 3, 'Simulacrum', 1],
-  ['Seven Years Bad Luck', 13, 'Mirror Shard', 1],
-  ['The Sephirot', 11, 'Divine Orb', 10],
-  ['The Patient', 8, 'The Nurse', 1],
-  ['The Nurse', 8, 'The Doctor', 1],
-  ['Unrequited Love', 16, 'Mirror Shard', 19],
-  ['House of Mirrors', 9, 'Mirror of Kalandra', 1],
-];
+// Divination cards: full set → reward. Cards whose reward is a fixed amount of one item, generated from RePoE's card
+// data (tools/div-cards.py → div-cards.json: [card, set size, reward, count]); a reward without an exchange price
+// (random ones like "Currency" or "Fossil") simply gives no flip. The Immortal is left out (owner's decision).
+const CARD_SKIP = new Set(['The Immortal']);
+const CARDS = (typeof require === 'function' ? require('./div-cards.json') : (root.EasyflipsCards || [])).filter(c => !CARD_SKIP.has(c[0]));
 // Breach: sell 1 unique + 1 blessing to a vendor → the upgraded unique (its rolls are new).
 // (from poedb, Nov 2026)
 const BLESSINGS = [

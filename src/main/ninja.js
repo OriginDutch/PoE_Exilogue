@@ -312,7 +312,7 @@ class NinjaPrice {
   // and when poe.ninja's data last changed. Throws only when nothing at all could be loaded.
   async easyflipData(fullLeague, force = false) {
     const league = await this._league(fullLeague);
-    const types = ['Currency', 'Essence', 'Oil', 'Fragment', 'DivinationCard'];
+    const types = ['Currency', 'Essence', 'Oil', 'Fragment', 'DivinationCard', 'DeliriumOrb']; // DeliriumOrb: card rewards
     // A list that failed is not asked again for 5 minutes; its last copy is used meanwhile (if any).
     const get = async (type, load) => {
       const key = `${league}|ef:${type}`, old = (this.ex && this.ex[type]) || this.items[type];
